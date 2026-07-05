@@ -8,7 +8,8 @@ RUN npm run build && npm prune --omit=dev
 FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production \
-    DATABASE_PATH=/app/data/tvtime.db
+    DATABASE_PATH=/app/data/tvtime.db \
+    BODY_SIZE_LIMIT=200M
 COPY --from=build /app/build ./build
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./

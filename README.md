@@ -62,11 +62,7 @@ docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
 
 1. **Publier le dépôt sur GitHub** : la CI (`.github/workflows/docker.yml`) build l'image à chaque push sur `master`/`main` et la pousse sur `ghcr.io/<utilisateur>/tvtimelocal:latest` (aucun secret à configurer, `GITHUB_TOKEN` suffit).
 2. **Portainer** : Stacks → Add stack → coller `portainer-stack.yml` (remplacer `VOTRE_UTILISATEUR`), renseigner `TMDB_API_KEY`, `AUTH_PASSWORD` et `ORIGIN` dans les variables d'environnement du stack. Si le paquet ghcr est privé, déclarer le registre dans Portainer → Registries avec un PAT GitHub (`read:packages`).
-3. **Récupérer vos données** : copier votre `data/tvtime.db` local dans le volume du container, par exemple :
-   ```sh
-   docker cp data/tvtime.db tvtimelocal:/app/data/tvtime.db && docker restart tvtimelocal
-   ```
-   (ou relancer l'import GDPR depuis le container, cf. plus haut).
+3. **Transférer vos données** : sur l'instance locale, Profil → **Exporter la base** (télécharge un `.db`), puis sur l'instance serveur, Profil → **Importer**. C'est tout.
 4. Mise à jour : re-pull l'image dans Portainer (« Recreate » avec re-pull) après chaque push.
 
 ## Commandes utiles

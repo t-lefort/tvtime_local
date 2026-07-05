@@ -3,7 +3,9 @@
 	import Poster from '$lib/components/Poster.svelte';
 	import { formatDuration, formatMonth } from '$lib/format';
 
-	let { data } = $props();
+	let { data, form } = $props();
+	let importFile = $state<FileList | null>(null);
+	let importing = $state(false);
 
 	const maxMonth = $derived(Math.max(1, ...data.months.map((m) => m.count)));
 	const maxGenre = $derived(Math.max(1, ...data.perGenre.map((g) => g.minutes)));
@@ -93,6 +95,55 @@
 		</div>
 	</section>
 {/if}
+
+<section class="mt-6">
+	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Données</h2>
+	<div class="space-y-3 rounded-2xl bg-card p-4">
+		<div class="flex flex-wrap items-center gap-2">
+			<a
+				href="/profil/export"
+				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90"
+			>
+				⬇ Exporter la base
+			</a>
+			<span class="text-xs text-mut">Télécharge un fichier .db avec tout (séries, historique, statuts).</span>
+		</div>
+		<form
+			method="POST"
+			action="?/import"
+			enctype="multipart/form-data"
+			use:enhance={() => {
+				importing = true;
+				return async ({ update }) => {
+					await update();
+					importing = false;
+				};
+			}}
+			class="flex flex-wrap items-center gap-2"
+		>
+			<input
+				type="file"
+				name="db"
+				accept=".db,application/vnd.sqlite3,application/x-sqlite3"
+				bind:files={importFile}
+				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+			/>
+			<button
+				disabled={!importFile?.length || importing}
+				class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink disabled:opacity-40"
+			>
+				{importing ? 'Import…' : 'Importer (remplace les données actuelles)'}
+			</button>
+		</form>
+		{#if form?.error}
+			<p class="text-sm text-red-400">{form.error}</p>
+		{:else if form?.imported}
+			<p class="text-sm text-ok">
+				✓ Import réussi : {form.imported.shows} séries, {form.imported.watches.toLocaleString('fr-FR')} visionnages.
+			</p>
+		{/if}
+	</div>
+</section>
 
 {#if data.watchedShows.length}
 	<section class="mt-6">
