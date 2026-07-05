@@ -1,0 +1,31 @@
+# Stack Portainer pour TV Time local
+#
+# Portainer → Stacks → Add stack → Web editor : coller ce fichier.
+# Remplacer VOTRE_UTILISATEUR par votre nom d'utilisateur GitHub, puis
+# renseigner les variables d'environnement dans la section "Environment
+# variables" de Portainer : TMDB_API_KEY, AUTH_PASSWORD, ORIGIN.
+#
+# ORIGIN = l'URL exacte par laquelle vous accédez à l'app
+# (ex. http://192.168.1.10:3000 ou https://tvtime.mondomaine.fr).
+# Sans elle, les actions (cocher un épisode…) sont rejetées (protection CSRF).
+#
+# Si le paquet ghcr.io est privé : Portainer → Registries → Add registry
+# (ghcr.io + un Personal Access Token GitHub avec le scope read:packages).
+
+services:
+  tvtime:
+    image: ghcr.io/VOTRE_UTILISATEUR/tvtimelocal:latest
+    container_name: tvtimelocal
+    ports:
+      - '3000:3000'
+    environment:
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+      - ORIGIN=${ORIGIN}
+      - TZ=Europe/Paris
+    volumes:
+      - tvtime_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  tvtime_data:

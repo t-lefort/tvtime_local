@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-bg: #0b1220;
+	--color-card: #17213a;
+	--color-card-hover: #1d2a4a;
+	--color-line: #24314f;
+	--color-ink: #e9eef8;
+	--color-mut: #8fa0bd;
+	--color-brand: #fbc500;
+	--color-brand-ink: #1a1400;
+	--color-ok: #3ecf8e;
+}
+
+html {
+	background: var(--color-bg);
+	color: var(--color-ink);
+	color-scheme: dark;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body {
+	font-family:
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
+}
