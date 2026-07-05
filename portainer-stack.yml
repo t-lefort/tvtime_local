@@ -1,8 +1,7 @@
 # Stack Portainer pour TV Time local
 #
 # Portainer → Stacks → Add stack → Web editor : coller ce fichier.
-# Remplacer VOTRE_UTILISATEUR par votre nom d'utilisateur GitHub, puis
-# renseigner les variables d'environnement dans la section "Environment
+# Renseigner les variables d'environnement dans la section "Environment
 # variables" de Portainer : TMDB_API_KEY, AUTH_PASSWORD, ORIGIN.
 #
 # ORIGIN = l'URL exacte par laquelle vous accédez à l'app
@@ -14,7 +13,7 @@
 
 services:
   tvtime:
-    image: ghcr.io/VOTRE_UTILISATEUR/tvtimelocal:latest
+    image: ghcr.io/t-lefort/tvtime_local:latest
     container_name: tvtimelocal
     ports:
       - '3000:3000'
