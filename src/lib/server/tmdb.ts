@@ -75,6 +75,76 @@ export interface TmdbShowDetails extends TmdbShowSummary {
 	external_ids?: { tvdb_id: number | null };
 	last_air_date: string | null;
 	networks?: { name: string }[];
+	'watch/providers'?: TmdbWatchProviders;
+}
+
+export interface TmdbMovieSummary {
+	id: number;
+	title: string;
+	original_title: string;
+	overview: string;
+	poster_path: string | null;
+	backdrop_path: string | null;
+	release_date: string | null;
+	vote_average: number;
+}
+
+export interface TmdbMovieDetails extends TmdbMovieSummary {
+	runtime: number | null;
+	genres: { id: number; name: string }[];
+	'watch/providers'?: TmdbWatchProviders;
+}
+
+interface TmdbProvider {
+	provider_name: string;
+	logo_path: string | null;
+	display_priority: number;
+}
+
+export interface TmdbWatchProviders {
+	results: Record<
+		string,
+		{
+			link?: string;
+			flatrate?: TmdbProvider[];
+			free?: TmdbProvider[];
+			ads?: TmdbProvider[];
+			rent?: TmdbProvider[];
+			buy?: TmdbProvider[];
+		}
+	>;
+}
+
+/** Forme stockée en base (colonne watch_providers, JSON). Source JustWatch via TMDB. */
+export interface StoredProviders {
+	link: string | null;
+	streaming: { name: string; logoPath: string | null }[];
+	rent: { name: string; logoPath: string | null }[];
+	buy: { name: string; logoPath: string | null }[];
+}
+
+/** Pays utilisé pour les plateformes de streaming (défaut : France). */
+export function watchRegion(): string {
+	return process.env.WATCH_REGION?.trim().toUpperCase() || 'FR';
+}
+
+/** Réduit la réponse TMDB aux plateformes de la région, prêtes à stocker. Null si aucune. */
+export function extractProviders(raw: TmdbWatchProviders | undefined): StoredProviders | null {
+	const region = raw?.results?.[watchRegion()];
+	if (!region) return null;
+	const slim = (list?: TmdbProvider[]) =>
+		(list ?? [])
+			.slice()
+			.sort((a, b) => a.display_priority - b.display_priority)
+			.map((p) => ({ name: p.provider_name, logoPath: p.logo_path }));
+	// « streaming » = abonnement + gratuit (avec ou sans pub), dédoublonné
+	const streaming = [...slim(region.flatrate), ...slim(region.free), ...slim(region.ads)].filter(
+		(p, i, arr) => arr.findIndex((q) => q.name === p.name) === i
+	);
+	const rent = slim(region.rent);
+	const buy = slim(region.buy);
+	if (!streaming.length && !rent.length && !buy.length) return null;
+	return { link: region.link ?? null, streaming, rent, buy };
 }
 
 export interface TmdbEpisode {
@@ -105,10 +175,32 @@ export async function findByTvdbId(tvdbId: number): Promise<number | null> {
 }
 
 export async function getShowDetails(tmdbId: number): Promise<TmdbShowDetails> {
-	return tmdb<TmdbShowDetails>(`/tv/${tmdbId}`, { append_to_response: 'external_ids' });
+	return tmdb<TmdbShowDetails>(`/tv/${tmdbId}`, {
+		append_to_response: 'external_ids,watch/providers'
+	});
 }
 
 export async function getSeasonEpisodes(tmdbId: number, seasonNumber: number): Promise<TmdbEpisode[]> {
 	const res = await tmdb<{ episodes: TmdbEpisode[] }>(`/tv/${tmdbId}/season/${seasonNumber}`);
 	return res.episodes;
+}
+
+export async function searchMovie(query: string): Promise<TmdbMovieSummary[]> {
+	const res = await tmdb<{ results: TmdbMovieSummary[] }>('/search/movie', {
+		query,
+		include_adult: false
+	});
+	return res.results;
+}
+
+export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails> {
+	return tmdb<TmdbMovieDetails>(`/movie/${tmdbId}`, {
+		append_to_response: 'watch/providers'
+	});
+}
+
+/** Plateformes seules (pour rafraîchir sans recharger tous les détails). */
+export async function getProviders(kind: 'tv' | 'movie', tmdbId: number): Promise<StoredProviders | null> {
+	const raw = await tmdb<TmdbWatchProviders>(`/${kind}/${tmdbId}/watch/providers`);
+	return extractProviders(raw);
 }

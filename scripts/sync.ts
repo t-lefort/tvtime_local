@@ -1,5 +1,6 @@
-/** Rafraîchit manuellement toutes les séries en cours depuis TMDB : npm run sync */
+/** Rafraîchit manuellement les séries en cours et les plateformes de streaming : npm run sync */
 import 'dotenv/config';
-import { syncOngoingShows } from '../src/lib/server/sync';
+import { syncOngoingShows, syncProviders } from '../src/lib/server/sync';
 
 await syncOngoingShows();
+await syncProviders();

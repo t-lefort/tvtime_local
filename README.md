@@ -1,14 +1,16 @@
 # TV Time local
 
-Application web auto-hébergée de suivi de séries, pensée comme un remplacement minimaliste de TV Time (fermé en juillet 2026) : épisodes à voir, calendrier des sorties, détail des saisons, recherche et statistiques — sans la partie sociale.
+Application web auto-hébergée de suivi de séries **et de films**, pensée comme un remplacement minimaliste de TV Time (fermé en juillet 2026) : épisodes à voir, calendrier des sorties, détail des saisons, recherche, statistiques et plateformes de streaming — sans la partie sociale.
 
 - **Fil** : onglet **À voir** (le prochain épisode de chaque série, à cocher) et onglet **À venir** (les prochaines diffusions, groupées par date)
 - **Séries** : votre bibliothèque avec barres de progression et filtres (en cours, à jour, arrêtées, terminées, pas commencées)
 - **Détail série** : saisons dépliables, épisodes cochables, « tout marquer », « vu jusqu'ici », **arrêter/reprendre** une série, favori, suppression
-- **Recherche** : ajout de nouvelles séries via TMDB (métadonnées en français)
-- **Profil** : temps total devant l'écran, épisodes par mois, répartition par genre, classement des séries vues
+- **Films** : collection avec filtres (à voir, vus, favoris), marquer vu/non vu, revisionnages, favori
+- **Où regarder** : sur chaque série et film, les plateformes de streaming où le titre est disponible (abonnement, gratuit, location/achat — données JustWatch via TMDB, région configurable avec `WATCH_REGION`, `FR` par défaut)
+- **Recherche** : ajout de séries et de films via TMDB (métadonnées en français)
+- **Profil** : temps total devant l'écran (séries + films), visionnages par mois, répartition par genre, classement des séries vues
 
-Les séries encore en production sont rafraîchies automatiquement chaque nuit (nouvelles saisons, dates de diffusion). Installable comme PWA sur mobile.
+Les séries encore en production sont rafraîchies automatiquement chaque nuit (nouvelles saisons, dates de diffusion), ainsi que les plateformes de streaming de toute la bibliothèque. Installable comme PWA sur mobile.
 
 ## Prérequis
 

@@ -1,6 +1,6 @@
 /** Utilitaires de formatage partagés client/serveur (locale fr-FR). */
 
-export function tmdbImg(path: string | null | undefined, size: 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w342'): string | null {
+export function tmdbImg(path: string | null | undefined, size: 'w92' | 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w342'): string | null {
 	return path ? `https://image.tmdb.org/t/p/${size}${path}` : null;
 }
 

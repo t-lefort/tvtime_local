@@ -19,7 +19,9 @@ export const shows = sqliteTable('shows', {
 		.default(sql`(datetime('now'))`),
 	archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
 	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
-	lastSyncedAt: text('last_synced_at')
+	lastSyncedAt: text('last_synced_at'),
+	// Plateformes de streaming (JSON StoredProviders, source JustWatch via TMDB)
+	watchProviders: text('watch_providers')
 });
 
 export const episodes = sqliteTable(
@@ -58,6 +60,44 @@ export const watches = sqliteTable(
 	(t) => [index('watches_episode').on(t.episodeId), index('watches_watched_at').on(t.watchedAt)]
 );
 
+export const movies = sqliteTable('movies', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	tmdbId: integer('tmdb_id').notNull().unique(),
+	title: text('title').notNull(),
+	originalTitle: text('original_title'),
+	overview: text('overview'),
+	posterPath: text('poster_path'),
+	backdropPath: text('backdrop_path'),
+	releaseDate: text('release_date'),
+	runtime: integer('runtime'),
+	genres: text('genres').notNull().default('[]'),
+	addedAt: text('added_at')
+		.notNull()
+		.default(sql`(datetime('now'))`),
+	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+	lastSyncedAt: text('last_synced_at'),
+	watchProviders: text('watch_providers')
+});
+
+export const movieWatches = sqliteTable(
+	'movie_watches',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		movieId: integer('movie_id')
+			.notNull()
+			.references(() => movies.id, { onDelete: 'cascade' }),
+		watchedAt: text('watched_at')
+			.notNull()
+			.default(sql`(datetime('now'))`)
+	},
+	(t) => [
+		index('movie_watches_movie').on(t.movieId),
+		index('movie_watches_watched_at').on(t.watchedAt)
+	]
+);
+
 export type Show = typeof shows.$inferSelect;
 export type Episode = typeof episodes.$inferSelect;
 export type Watch = typeof watches.$inferSelect;
+export type Movie = typeof movies.$inferSelect;
+export type MovieWatch = typeof movieWatches.$inferSelect;

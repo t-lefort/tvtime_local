@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { formatDateShort, tmdbImg, yearOf } from '$lib/format';
 
 	let { data } = $props();
@@ -125,6 +126,8 @@
 {#if show.overview}
 	<p class="mt-4 text-sm leading-relaxed text-mut">{show.overview}</p>
 {/if}
+
+<WatchProviders providers={show.providers} />
 
 <div class="mt-6 space-y-3">
 	{#each data.seasons as season (season.number)}

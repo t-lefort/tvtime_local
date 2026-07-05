@@ -23,8 +23,13 @@ export const load: PageServerLoad = () => {
 
 	return {
 		totalMinutes: stats.totalMinutes,
+		seriesMinutes: stats.seriesMinutes,
+		movieMinutes: stats.movieMinutes,
 		distinctEpisodes: stats.distinctEpisodes,
 		totalWatches: stats.totalWatches,
+		distinctMovies: stats.distinctMovies,
+		totalMovieWatches: stats.totalMovieWatches,
+		totalMovies: stats.totalMovies,
 		countsByState: stats.countsByState,
 		totalShows: stats.totalShows,
 		months,
@@ -87,21 +92,40 @@ export const actions: Actions = {
 			const raw = db.$client;
 			raw.prepare('ATTACH DATABASE ? AS src').run(tmp);
 			try {
-				raw.exec(`
-					BEGIN;
-					DELETE FROM watches;
-					DELETE FROM episodes;
-					DELETE FROM shows;
-					INSERT INTO shows SELECT * FROM src.shows;
-					INSERT INTO episodes SELECT * FROM src.episodes;
-					INSERT INTO watches SELECT * FROM src.watches;
-					COMMIT;
-				`);
-			} catch (e) {
-				raw.exec('ROLLBACK');
-				return fail(400, {
-					error: `Import impossible (schéma incompatible ?) : ${e instanceof Error ? e.message : e}`
-				});
+				// Parents d'abord pour l'insertion ; copie par intersection de colonnes pour
+				// accepter les exports d'anciennes versions (sans films ni watch_providers)
+				const TABLES = ['shows', 'episodes', 'watches', 'movies', 'movie_watches'];
+				const srcTables = new Set(
+					raw
+						.prepare(`SELECT name FROM src.sqlite_master WHERE type = 'table'`)
+						.all()
+						.map((r) => (r as { name: string }).name)
+				);
+				const columnsOf = (schema: 'main' | 'src', t: string) =>
+					raw
+						.prepare(`SELECT name FROM pragma_table_info(?, ?)`)
+						.all(t, schema)
+						.map((r) => (r as { name: string }).name);
+
+				raw.exec('BEGIN');
+				try {
+					for (const t of [...TABLES].reverse()) raw.exec(`DELETE FROM ${t}`);
+					for (const t of TABLES) {
+						if (!srcTables.has(t)) continue;
+						const srcCols = new Set(columnsOf('src', t));
+						const cols = columnsOf('main', t)
+							.filter((c) => srcCols.has(c))
+							.map((c) => `"${c}"`)
+							.join(', ');
+						raw.exec(`INSERT INTO ${t} (${cols}) SELECT ${cols} FROM src."${t}"`);
+					}
+					raw.exec('COMMIT');
+				} catch (e) {
+					raw.exec('ROLLBACK');
+					return fail(400, {
+						error: `Import impossible (schéma incompatible ?) : ${e instanceof Error ? e.message : e}`
+					});
+				}
 			} finally {
 				raw.exec('DETACH DATABASE src');
 			}
@@ -109,7 +133,12 @@ export const actions: Actions = {
 			const count = (t: string) =>
 				(raw.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get() as { c: number }).c;
 			return {
-				imported: { shows: count('shows'), episodes: count('episodes'), watches: count('watches') }
+				imported: {
+					shows: count('shows'),
+					episodes: count('episodes'),
+					watches: count('watches'),
+					movies: count('movies')
+				}
 			};
 		} finally {
 			fs.rmSync(tmp, { force: true });

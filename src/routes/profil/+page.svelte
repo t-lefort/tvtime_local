@@ -19,6 +19,10 @@
 	]);
 
 	const hours = (min: number) => `${Math.round(min / 60)} h`;
+
+	const rewatches = $derived(
+		data.totalWatches - data.distinctEpisodes + data.totalMovieWatches - data.distinctMovies
+	);
 </script>
 
 <svelte:head>
@@ -37,10 +41,16 @@
 <section class="rounded-2xl bg-card p-5 text-center">
 	<p class="text-xs font-semibold tracking-widest text-mut uppercase">Temps devant l'écran</p>
 	<p class="mt-1 text-3xl font-extrabold">{formatDuration(data.totalMinutes)}</p>
+	{#if data.movieMinutes > 0}
+		<p class="mt-1 text-xs text-mut">
+			Séries : {formatDuration(data.seriesMinutes)} · Films : {formatDuration(data.movieMinutes)}
+		</p>
+	{/if}
 	<p class="mt-2 text-sm text-mut">
 		{data.distinctEpisodes.toLocaleString('fr-FR')} épisodes ·
-		{data.totalShows} séries{#if data.totalWatches > data.distinctEpisodes}
-			· {(data.totalWatches - data.distinctEpisodes).toLocaleString('fr-FR')} revisionnages{/if}
+		{data.totalShows} séries{#if data.distinctMovies > 0}
+			· {data.distinctMovies.toLocaleString('fr-FR')} film{data.distinctMovies > 1 ? 's' : ''}{/if}{#if rewatches > 0}
+			· {rewatches.toLocaleString('fr-FR')} revisionnages{/if}
 	</p>
 </section>
 
@@ -139,7 +149,8 @@
 			<p class="text-sm text-red-400">{form.error}</p>
 		{:else if form?.imported}
 			<p class="text-sm text-ok">
-				✓ Import réussi : {form.imported.shows} séries, {form.imported.watches.toLocaleString('fr-FR')} visionnages.
+				✓ Import réussi : {form.imported.shows} séries, {form.imported.movies} film{form.imported.movies > 1 ? 's' : ''},
+				{form.imported.watches.toLocaleString('fr-FR')} visionnages.
 			</p>
 		{/if}
 	</div>

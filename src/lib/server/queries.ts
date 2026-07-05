@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { db } from './db';
-import type { Show } from './db/schema';
+import type { Movie, Show } from './db/schema';
+
+/** Durée par défaut (min) quand TMDB ne connaît pas le runtime d'un film. */
+const DEFAULT_MOVIE_RUNTIME = 110;
 
 export interface WatchNextItem {
 	showId: number;
@@ -139,6 +142,7 @@ export function getShowsWithProgress(showId?: number): ShowWithProgress[] {
 			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.genres,
 			s.episode_run_time AS episodeRunTime, s.followed_at AS followedAt,
 			s.archived, s.favorite, s.last_synced_at AS lastSyncedAt,
+			s.watch_providers AS watchProviders,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')) AS airedCount,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0) AS totalCount,
@@ -169,6 +173,26 @@ export function getShowsWithProgress(showId?: number): ShowWithProgress[] {
 	});
 }
 
+export interface MovieWithWatch extends Movie {
+	watchCount: number;
+	lastWatchedAt: string | null;
+}
+
+export function getMoviesWithWatch(movieId?: number): MovieWithWatch[] {
+	const rows = db.all<Record<string, unknown>>(sql`
+		SELECT m.id, m.tmdb_id AS tmdbId, m.title, m.original_title AS originalTitle,
+			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
+			m.release_date AS releaseDate, m.runtime, m.genres, m.added_at AS addedAt,
+			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders,
+			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id) AS watchCount,
+			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id) AS lastWatchedAt
+		FROM movies m
+		${movieId !== undefined ? sql`WHERE m.id = ${movieId}` : sql``}
+		ORDER BY m.title COLLATE NOCASE
+	`);
+	return rows.map((r) => ({ ...(r as unknown as MovieWithWatch), favorite: Boolean(r.favorite) }));
+}
+
 export interface EpisodeWithWatch {
 	id: number;
 	seasonNumber: number;
@@ -194,8 +218,13 @@ export function getEpisodesWithWatch(showId: number): EpisodeWithWatch[] {
 
 export interface ProfileStats {
 	totalMinutes: number;
+	seriesMinutes: number;
+	movieMinutes: number;
 	distinctEpisodes: number;
 	totalWatches: number;
+	distinctMovies: number;
+	totalMovieWatches: number;
+	totalMovies: number;
 	countsByState: Record<ShowState, number>;
 	totalShows: number;
 	perMonth: { month: string; count: number }[];
@@ -212,10 +241,26 @@ export function getProfileStats(): ProfileStats {
 		JOIN episodes e ON e.id = w.episode_id
 		JOIN shows s ON s.id = e.show_id
 	`);
+	const movieTotals = db.get<{ minutes: number | null; distinctMovies: number; totalWatches: number }>(sql`
+		SELECT COALESCE(SUM(COALESCE(m.runtime, ${DEFAULT_MOVIE_RUNTIME})), 0) AS minutes,
+			COUNT(DISTINCT w.movie_id) AS distinctMovies,
+			COUNT(*) AS totalWatches
+		FROM movie_watches w
+		JOIN movies m ON m.id = w.movie_id
+	`);
+	const totalMovies = db.get<{ c: number }>(sql`SELECT COUNT(*) AS c FROM movies`)?.c ?? 0;
 	const perMonth = db.all<{ month: string; count: number }>(sql`
-		SELECT strftime('%Y-%m', watched_at) AS month, COUNT(*) AS count
-		FROM watches
-		WHERE watched_at >= datetime('now', '-24 months')
+		SELECT month, SUM(count) AS count FROM (
+			SELECT strftime('%Y-%m', watched_at) AS month, COUNT(*) AS count
+			FROM watches
+			WHERE watched_at >= datetime('now', '-24 months')
+			GROUP BY month
+			UNION ALL
+			SELECT strftime('%Y-%m', watched_at) AS month, COUNT(*) AS count
+			FROM movie_watches
+			WHERE watched_at >= datetime('now', '-24 months')
+			GROUP BY month
+		)
 		GROUP BY month
 		ORDER BY month
 	`);
@@ -227,6 +272,13 @@ export function getProfileStats(): ProfileStats {
 		if (!s.minutesWatched) continue;
 		for (const genre of JSON.parse(s.genres) as string[]) {
 			genreMinutes.set(genre, (genreMinutes.get(genre) ?? 0) + s.minutesWatched);
+		}
+	}
+	for (const m of getMoviesWithWatch()) {
+		if (!m.watchCount) continue;
+		const minutes = m.watchCount * (m.runtime ?? DEFAULT_MOVIE_RUNTIME);
+		for (const genre of JSON.parse(m.genres) as string[]) {
+			genreMinutes.set(genre, (genreMinutes.get(genre) ?? 0) + minutes);
 		}
 	}
 	const perGenre = [...genreMinutes.entries()]
@@ -242,10 +294,17 @@ export function getProfileStats(): ProfileStats {
 	};
 	for (const s of perShow) countsByState[s.state]++;
 
+	const seriesMinutes = totals?.totalMinutes ?? 0;
+	const movieMinutes = movieTotals?.minutes ?? 0;
 	return {
-		totalMinutes: totals?.totalMinutes ?? 0,
+		totalMinutes: seriesMinutes + movieMinutes,
+		seriesMinutes,
+		movieMinutes,
 		distinctEpisodes: totals?.distinctEpisodes ?? 0,
 		totalWatches: totals?.totalWatches ?? 0,
+		distinctMovies: movieTotals?.distinctMovies ?? 0,
+		totalMovieWatches: movieTotals?.totalWatches ?? 0,
+		totalMovies,
 		countsByState,
 		totalShows: perShow.length,
 		perMonth,

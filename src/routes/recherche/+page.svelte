@@ -5,6 +5,8 @@
 
 	let { data } = $props();
 	let adding = $state<number | null>(null);
+
+	const isFilms = $derived(data.type === 'films');
 </script>
 
 <svelte:head>
@@ -13,12 +15,26 @@
 
 <h1 class="mb-4 text-2xl font-bold">Recherche</h1>
 
+<div class="mb-4 flex gap-2">
+	{#each [{ key: 'series', label: 'Séries' }, { key: 'films', label: 'Films' }] as t (t.key)}
+		<a
+			href="/recherche?type={t.key}{data.q ? `&q=${encodeURIComponent(data.q)}` : ''}"
+			data-sveltekit-replacestate
+			class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
+				{data.type === t.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
+		>
+			{t.label}
+		</a>
+	{/each}
+</div>
+
 <form method="GET" class="mb-5">
+	<input type="hidden" name="type" value={data.type} />
 	<input
 		type="search"
 		name="q"
 		value={data.q}
-		placeholder="Nom d'une série…"
+		placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
 		autocomplete="off"
 		class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
 	/>
@@ -37,12 +53,12 @@
 		{#each data.results as result (result.tmdbId)}
 			<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
 				<div class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
-					<Poster path={result.posterPath} alt={result.name} size="w185" />
+					<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? '🎬' : '📺'} />
 				</div>
 				<div class="min-w-0 flex-1 py-1">
 					<p class="truncate font-semibold">
 						{result.name}
-						{#if yearOf(result.firstAirDate)}<span class="font-normal text-mut"> ({yearOf(result.firstAirDate)})</span>{/if}
+						{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
 					</p>
 					{#if result.originalName !== result.name}
 						<p class="truncate text-xs text-mut">{result.originalName}</p>
@@ -53,7 +69,7 @@
 				</div>
 				{#if result.localId}
 					<a
-						href="/series/{result.localId}"
+						href="{isFilms ? '/films' : '/series'}/{result.localId}"
 						class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
 					>
 						Voir
@@ -61,7 +77,7 @@
 				{:else}
 					<form
 						method="POST"
-						action="?/add"
+						action={isFilms ? '?/addMovie' : '?/add'}
 						use:enhance={() => {
 							adding = result.tmdbId;
 							return async ({ update }) => {
@@ -75,7 +91,7 @@
 							disabled={adding !== null}
 							class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
 						>
-							{adding === result.tmdbId ? 'Ajout…' : '+ Suivre'}
+							{adding === result.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
 						</button>
 					</form>
 				{/if}
@@ -84,7 +100,7 @@
 	</ul>
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
-		Cherchez une série pour l'ajouter à votre bibliothèque.
+		Cherchez {isFilms ? 'un film' : 'une série'} pour l'ajouter à votre bibliothèque.
 	</p>
 {/if}
 
