@@ -7,6 +7,14 @@
 	let adding = $state<number | null>(null);
 
 	const isFilms = $derived(data.type === 'films');
+
+	function resultHref(result: { tmdbId: number; localId: number | null }): string | null {
+		if (!isFilms) return null;
+		if (result.localId) return `/films/${result.localId}`;
+
+		const params = new URLSearchParams({ q: data.q });
+		return `/films/tmdb/${result.tmdbId}?${params}`;
+	}
 </script>
 
 <svelte:head>
@@ -51,13 +59,18 @@
 {:else if data.results.length}
 	<ul class="space-y-2">
 		{#each data.results as result (result.tmdbId)}
+			{@const href = resultHref(result)}
 			<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
 				<div class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
 					<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? '🎬' : '📺'} />
 				</div>
 				<div class="min-w-0 flex-1 py-1">
 					<p class="truncate font-semibold">
-						{result.name}
+						{#if href}
+							<a href={href} class="hover:text-brand hover:underline">{result.name}</a>
+						{:else}
+							{result.name}
+						{/if}
 						{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
 					</p>
 					{#if result.originalName !== result.name}
