@@ -69,13 +69,13 @@ export const actions: Actions = {
 		const tmdbId = Number((await request.formData()).get('tmdbId'));
 		if (!tmdbId) return;
 		const show = await addOrUpdateShow(tmdbId);
-		redirect(303, `/series/${show.id}`);
+		redirect(303, `/series/${show.tmdbId}`);
 	},
 
 	addMovie: async ({ request }) => {
 		const tmdbId = Number((await request.formData()).get('tmdbId'));
 		if (!tmdbId) return;
 		const movie = await addOrUpdateMovie(tmdbId);
-		redirect(303, `/films/${movie.id}`);
+		redirect(303, `/films/${movie.tmdbId}`);
 	}
 };

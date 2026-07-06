@@ -28,11 +28,10 @@
 		return `/recherche?${params}`;
 	}
 
-	function resultHref(result: { tmdbId: number; localId: number | null }): string {
-		if (result.localId) return `${isFilms ? '/films' : '/series'}/${result.localId}`;
-
-		const params = new URLSearchParams({ q: data.q });
-		return `${isFilms ? '/films' : '/series'}/tmdb/${result.tmdbId}?${params}`;
+	function resultHref(result: { tmdbId: number }): string {
+		const base = isFilms ? '/films' : '/series';
+		const params = data.q ? `?${new URLSearchParams({ q: data.q })}` : '';
+		return `${base}/${result.tmdbId}${params}`;
 	}
 
 	function ratingLabel(value: number) {

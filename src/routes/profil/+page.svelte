@@ -165,7 +165,7 @@
 			{#each data.watchedShows as show, i (show.id)}
 				<li>
 					<a
-						href="/series/{show.id}"
+						href="/series/{show.tmdbId}"
 						class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover"
 					>
 						<span class="w-6 shrink-0 text-center text-xs text-mut tabular-nums">{i + 1}</span>

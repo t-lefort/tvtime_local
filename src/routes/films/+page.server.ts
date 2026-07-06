@@ -23,6 +23,7 @@ export const load: PageServerLoad = ({ url }) => {
 
 	const movies = filtered.map((m) => ({
 		id: m.id,
+		tmdbId: m.tmdbId,
 		title: m.title,
 		posterPath: m.posterPath,
 		releaseDate: m.releaseDate,

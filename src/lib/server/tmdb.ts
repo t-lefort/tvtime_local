@@ -380,6 +380,12 @@ export async function getProviders(kind: 'tv' | 'movie', tmdbId: number): Promis
 	return extractProviders(raw);
 }
 
+/** Distribution seule (pour compléter un titre déjà en bibliothèque sans tout recharger). */
+export async function getCast(kind: 'tv' | 'movie', tmdbId: number): Promise<StoredCastMember[]> {
+	const res = await tmdb<TmdbCredits>(`/${kind}/${tmdbId}/credits`);
+	return extractCast(res);
+}
+
 export interface TmdbPersonDetails {
 	id: number;
 	name: string;

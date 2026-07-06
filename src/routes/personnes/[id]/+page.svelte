@@ -19,8 +19,7 @@
 	};
 
 	function creditHref(kind: 'films' | 'series', credit: CreditWithLocal): string {
-		if (credit.localId) return `/${kind}/${credit.localId}`;
-		return `/${kind}/tmdb/${credit.tmdbId}`;
+		return `/${kind}/${credit.tmdbId}`;
 	}
 </script>
 

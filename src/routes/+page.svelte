@@ -56,7 +56,7 @@
 		<ul class="space-y-3">
 			{#each data.watchNext as item (item.showId)}
 				<li class="flex items-center gap-3 overflow-hidden rounded-xl bg-card">
-					<a href="/series/{item.showId}" class="flex min-w-0 flex-1 items-center gap-3">
+					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3">
 						<div class="h-20 w-32 shrink-0">
 							{#if item.stillPath}
 								<img
@@ -116,7 +116,7 @@
 				<ul class="space-y-2">
 					{#each eps as ep (ep.episodeId)}
 						<li>
-							<a href="/series/{ep.showId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover">
+							<a href="/series/{ep.showTmdbId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover">
 								<div class="h-14 w-10 shrink-0 overflow-hidden rounded-md">
 									<Poster path={ep.posterPath} size="w185" />
 								</div>

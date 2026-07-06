@@ -22,6 +22,7 @@ export const load: PageServerLoad = ({ url }) => {
 	const state = FILTERS[filter] ?? null;
 	const shows = (state ? all.filter((s) => s.state === state) : all).map((s) => ({
 		id: s.id,
+		tmdbId: s.tmdbId,
 		name: s.name,
 		posterPath: s.posterPath,
 		state: s.state,

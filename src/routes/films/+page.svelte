@@ -44,7 +44,7 @@
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4">
 		{#each data.movies as movie (movie.id)}
-			<a href="/films/{movie.id}" class="group">
+			<a href="/films/{movie.tmdbId}" class="group">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 					<Poster path={movie.posterPath} alt={movie.title} size="w342" fallback="🎬" />
 					{#if movie.favorite}
