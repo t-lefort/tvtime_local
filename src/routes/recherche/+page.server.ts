@@ -12,7 +12,9 @@ export interface SearchResult {
 	originalName: string;
 	overview: string;
 	posterPath: string | null;
+	backdropPath: string | null;
 	date: string | null;
+	voteAverage: number;
 	localId: number | null;
 }
 
@@ -34,7 +36,9 @@ export const load: PageServerLoad = async ({ url }) => {
 				originalName: r.original_title,
 				overview: r.overview,
 				posterPath: r.poster_path,
+				backdropPath: r.backdrop_path,
 				date: r.release_date,
+				voteAverage: r.vote_average,
 				localId: inDb.get(r.id) ?? null
 			}));
 		} else {
@@ -48,7 +52,9 @@ export const load: PageServerLoad = async ({ url }) => {
 				originalName: r.original_name,
 				overview: r.overview,
 				posterPath: r.poster_path,
+				backdropPath: r.backdrop_path,
 				date: r.first_air_date,
+				voteAverage: r.vote_average,
 				localId: inDb.get(r.id) ?? null
 			}));
 		}

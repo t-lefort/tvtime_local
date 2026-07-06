@@ -1,12 +1,68 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import Poster from '$lib/components/Poster.svelte';
-	import { yearOf } from '$lib/format';
+	import { tmdbImg, yearOf } from '$lib/format';
 
 	let { data } = $props();
 	let adding = $state<number | null>(null);
+	let query = $state('');
+	let searching = $state(false);
+	let queuedQuery = $state('');
+	let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	const isFilms = $derived(data.type === 'films');
+	const preview = $derived(data.results[0] ?? null);
+	const otherResults = $derived(data.results.slice(1));
+
+	$effect(() => {
+		query = data.q;
+		queuedQuery = data.q;
+		searching = false;
+	});
+
+	function searchUrl(type = data.type, q = query) {
+		const params = new URLSearchParams({ type });
+		const trimmed = q.trim();
+		if (trimmed) params.set('q', trimmed);
+		return `/recherche?${params}`;
+	}
+
+	function ratingLabel(value: number) {
+		return value > 0 ? value.toFixed(1).replace('.', ',') : null;
+	}
+
+	function scheduleSearch(value: string) {
+		query = value;
+		const nextQuery = value.trim();
+		queuedQuery = nextQuery;
+
+		if (searchTimeout) clearTimeout(searchTimeout);
+		if (nextQuery === data.q) {
+			searching = false;
+			return;
+		}
+
+		searching = Boolean(nextQuery);
+		searchTimeout = setTimeout(async () => {
+			await goto(searchUrl(data.type, nextQuery), {
+				replaceState: true,
+				keepFocus: true,
+				noScroll: true
+			});
+		}, nextQuery ? 450 : 150);
+	}
+
+	function markSubmitPending() {
+		if (searchTimeout) clearTimeout(searchTimeout);
+		queuedQuery = query.trim();
+		searching = Boolean(queuedQuery) && queuedQuery !== data.q;
+	}
+
+	function clearPendingSearch() {
+		if (searchTimeout) clearTimeout(searchTimeout);
+		searching = false;
+	}
 </script>
 
 <svelte:head>
@@ -18,8 +74,9 @@
 <div class="mb-4 flex gap-2">
 	{#each [{ key: 'series', label: 'Séries' }, { key: 'films', label: 'Films' }] as t (t.key)}
 		<a
-			href="/recherche?type={t.key}{data.q ? `&q=${encodeURIComponent(data.q)}` : ''}"
+			href={searchUrl(t.key, query)}
 			data-sveltekit-replacestate
+			onclick={clearPendingSearch}
 			class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
 				{data.type === t.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
 		>
@@ -28,76 +85,166 @@
 	{/each}
 </div>
 
-<form method="GET" class="mb-5">
+<form method="GET" class="mb-3" onsubmit={markSubmitPending}>
 	<input type="hidden" name="type" value={data.type} />
 	<input
 		type="search"
 		name="q"
-		value={data.q}
+		bind:value={query}
+		oninput={(event) => scheduleSearch(event.currentTarget.value)}
 		placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
 		autocomplete="off"
 		class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
 	/>
 </form>
 
+<div class="mb-5 min-h-5 text-xs text-mut" aria-live="polite">
+	{#if searching}
+		Recherche de « {queuedQuery} »…
+	{:else if data.q && data.results.length}
+		{data.results.length} résultat{data.results.length > 1 ? 's' : ''} pour « {data.q} »
+	{/if}
+</div>
+
 {#if data.error}
 	<div class="rounded-xl border border-red-400/30 bg-card p-5 text-center text-sm text-red-300">
 		<p>{data.error}</p>
+	</div>
+{:else if searching && data.results.length === 0}
+	<div class="rounded-xl bg-card p-8 text-center text-mut">
+		<p>Recherche en cours…</p>
 	</div>
 {:else if data.q && data.results.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
 		<p>Aucun résultat pour « {data.q} ».</p>
 	</div>
-{:else if data.results.length}
-	<ul class="space-y-2">
-		{#each data.results as result (result.tmdbId)}
-			<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
-				<div class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
-					<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? '🎬' : '📺'} />
+{:else if preview}
+	<section class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70">
+		<div class="relative h-30 bg-card-hover sm:h-36">
+			{#if preview.backdropPath}
+				<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+			{/if}
+			<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
+			<p class="absolute top-3 left-3 rounded-full bg-bg/70 px-2.5 py-1 text-[11px] font-semibold text-brand backdrop-blur">
+				Meilleure correspondance
+			</p>
+		</div>
+		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
+			<div class="w-22 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
+				<div class="aspect-[2/3]">
+					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilms ? '🎬' : '📺'} />
 				</div>
-				<div class="min-w-0 flex-1 py-1">
-					<p class="truncate font-semibold">
-						{result.name}
-						{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
-					</p>
-					{#if result.originalName !== result.name}
-						<p class="truncate text-xs text-mut">{result.originalName}</p>
-					{/if}
-					{#if result.overview}
-						<p class="mt-0.5 line-clamp-2 text-xs text-mut">{result.overview}</p>
+			</div>
+			<div class="min-w-0 flex-1 pt-10">
+				<div class="flex flex-wrap items-start gap-x-2 gap-y-1">
+					<h2 class="min-w-0 flex-1 text-lg leading-tight font-bold">{preview.name}</h2>
+					{#if preview.localId}
+						<span class="rounded-full border border-brand px-2 py-0.5 text-[11px] font-semibold text-brand">Déjà ajouté</span>
 					{/if}
 				</div>
-				{#if result.localId}
-					<a
-						href="{isFilms ? '/films' : '/series'}/{result.localId}"
-						class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
-					>
-						Voir
-					</a>
-				{:else}
-					<form
-						method="POST"
-						action={isFilms ? '?/addMovie' : '?/add'}
-						use:enhance={() => {
-							adding = result.tmdbId;
-							return async ({ update }) => {
-								await update();
-								adding = null;
-							};
-						}}
-					>
-						<input type="hidden" name="tmdbId" value={result.tmdbId} />
-						<button
-							disabled={adding !== null}
-							class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
-						>
-							{adding === result.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
-						</button>
-					</form>
+				<p class="mt-1 text-sm text-mut">
+					{isFilms ? 'Film' : 'Série'}
+					{#if yearOf(preview.date)} · {yearOf(preview.date)}{/if}
+					{#if ratingLabel(preview.voteAverage)} · TMDB {ratingLabel(preview.voteAverage)}/10{/if}
+				</p>
+				{#if preview.originalName !== preview.name}
+					<p class="mt-0.5 truncate text-xs text-mut">{preview.originalName}</p>
 				{/if}
-			</li>
-		{/each}
-	</ul>
+				{#if preview.overview}
+					<p class="mt-2 line-clamp-4 text-sm leading-relaxed text-mut">{preview.overview}</p>
+				{:else}
+					<p class="mt-2 text-sm text-mut">Aucun résumé disponible pour ce résultat.</p>
+				{/if}
+				<div class="mt-3 flex flex-wrap items-center gap-2">
+					{#if preview.localId}
+						<a
+							href="{isFilms ? '/films' : '/series'}/{preview.localId}"
+							class="rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
+						>
+							Voir dans la bibliothèque
+						</a>
+					{:else}
+						<form
+							method="POST"
+							action={isFilms ? '?/addMovie' : '?/add'}
+							use:enhance={() => {
+								adding = preview.tmdbId;
+								return async ({ update }) => {
+									await update();
+									adding = null;
+								};
+							}}
+						>
+							<input type="hidden" name="tmdbId" value={preview.tmdbId} />
+							<button
+								disabled={adding !== null}
+								class="rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
+							>
+								{adding === preview.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
+							</button>
+						</form>
+					{/if}
+					<span class="text-xs text-mut">Aperçu issu des résultats TMDB</span>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	{#if otherResults.length}
+		<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Autres résultats</h2>
+		<ul class="space-y-2">
+			{#each otherResults as result (result.tmdbId)}
+				<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
+					<div class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
+						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? '🎬' : '📺'} />
+					</div>
+					<div class="min-w-0 flex-1 py-1">
+						<p class="truncate font-semibold">
+							{result.name}
+							{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
+						</p>
+						<p class="truncate text-xs text-mut">
+							{#if result.originalName !== result.name}{result.originalName}{/if}
+							{#if ratingLabel(result.voteAverage)}
+								{result.originalName !== result.name ? ' · ' : ''}TMDB {ratingLabel(result.voteAverage)}/10
+							{/if}
+						</p>
+						{#if result.overview}
+							<p class="mt-0.5 line-clamp-2 text-xs text-mut">{result.overview}</p>
+						{/if}
+					</div>
+					{#if result.localId}
+						<a
+							href="{isFilms ? '/films' : '/series'}/{result.localId}"
+							class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
+						>
+							Voir
+						</a>
+					{:else}
+						<form
+							method="POST"
+							action={isFilms ? '?/addMovie' : '?/add'}
+							use:enhance={() => {
+								adding = result.tmdbId;
+								return async ({ update }) => {
+									await update();
+									adding = null;
+								};
+							}}
+						>
+							<input type="hidden" name="tmdbId" value={result.tmdbId} />
+							<button
+								disabled={adding !== null}
+								class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
+							>
+								{adding === result.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
+							</button>
+						</form>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
 		Cherchez {isFilms ? 'un film' : 'une série'} pour l'ajouter à votre bibliothèque.
