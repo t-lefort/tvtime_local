@@ -26,7 +26,7 @@ npm install
 npm run import -- "C:\chemin\vers\gdpr-data"
 ```
 
-Le script importe les séries suivies (avec leur statut « arrêtée »), tout l'historique de visionnage avec les dates réelles, et les favoris. Il affiche un rapport final (séries non trouvées sur TMDB, comparaison du temps total avec la référence TV Time). Il est relançable sans doublons en cas d'interruption.
+Le script importe les séries suivies (avec leur statut « arrêtée »), les films à voir, tout l'historique de visionnage séries + films avec les dates réelles, et les favoris séries. Il affiche un rapport final (séries/films non trouvés sur TMDB, comparaison du temps total avec la référence TV Time). Il est relançable sans doublons en cas d'interruption.
 
 ## Lancement
 
