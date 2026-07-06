@@ -28,6 +28,13 @@
 		return `/recherche?${params}`;
 	}
 
+	function resultHref(result: { tmdbId: number; localId: number | null }): string {
+		if (result.localId) return `${isFilms ? '/films' : '/series'}/${result.localId}`;
+
+		const params = new URLSearchParams({ q: data.q });
+		return `${isFilms ? '/films' : '/series'}/tmdb/${result.tmdbId}?${params}`;
+	}
+
 	function ratingLabel(value: number) {
 		return value > 0 ? value.toFixed(1).replace('.', ',') : null;
 	}
@@ -119,33 +126,38 @@
 		<p>Aucun résultat pour « {data.q} ».</p>
 	</div>
 {:else if preview}
+	{@const previewHref = resultHref(preview)}
 	<section class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70">
-		<div class="relative h-30 bg-card-hover sm:h-36">
-			{#if preview.backdropPath}
-				<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
-			{/if}
-			<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
-			<p class="absolute top-3 left-3 rounded-full bg-bg/70 px-2.5 py-1 text-[11px] font-semibold text-brand backdrop-blur">
-				Meilleure correspondance
-			</p>
-		</div>
-		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
-			<div class="w-22 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
-				<div class="aspect-[2/3]">
-					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilms ? '🎬' : '📺'} />
-				</div>
+		<a href={previewHref} class="group block">
+			<div class="relative h-30 bg-card-hover sm:h-36">
+				{#if preview.backdropPath}
+					<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+				{/if}
+				<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
+				<p class="absolute top-3 left-3 rounded-full bg-bg/70 px-2.5 py-1 text-[11px] font-semibold text-brand backdrop-blur">
+					Meilleure correspondance
+				</p>
 			</div>
+		</a>
+		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
+			<a href={previewHref} class="w-22 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
+				<div class="aspect-[2/3]">
+					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilms ? 'film' : 'TV'} />
+				</div>
+			</a>
 			<div class="min-w-0 flex-1 pt-10">
 				<div class="flex flex-wrap items-start gap-x-2 gap-y-1">
-					<h2 class="min-w-0 flex-1 text-lg leading-tight font-bold">{preview.name}</h2>
+					<h2 class="min-w-0 flex-1 text-lg leading-tight font-bold">
+						<a href={previewHref} class="hover:text-brand hover:underline">{preview.name}</a>
+					</h2>
 					{#if preview.localId}
 						<span class="rounded-full border border-brand px-2 py-0.5 text-[11px] font-semibold text-brand">Déjà ajouté</span>
 					{/if}
 				</div>
 				<p class="mt-1 text-sm text-mut">
 					{isFilms ? 'Film' : 'Série'}
-					{#if yearOf(preview.date)} · {yearOf(preview.date)}{/if}
-					{#if ratingLabel(preview.voteAverage)} · TMDB {ratingLabel(preview.voteAverage)}/10{/if}
+					{#if yearOf(preview.date)} - {yearOf(preview.date)}{/if}
+					{#if ratingLabel(preview.voteAverage)} - TMDB {ratingLabel(preview.voteAverage)}/10{/if}
 				</p>
 				{#if preview.originalName !== preview.name}
 					<p class="mt-0.5 truncate text-xs text-mut">{preview.originalName}</p>
@@ -157,11 +169,8 @@
 				{/if}
 				<div class="mt-3 flex flex-wrap items-center gap-2">
 					{#if preview.localId}
-						<a
-							href="{isFilms ? '/films' : '/series'}/{preview.localId}"
-							class="rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
-						>
-							Voir dans la bibliothèque
+						<a href={previewHref} class="rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand">
+							Voir dans la bibliotheque
 						</a>
 					{:else}
 						<form
@@ -183,8 +192,10 @@
 								{adding === preview.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
 							</button>
 						</form>
+						<a href={previewHref} class="rounded-full border border-line px-3.5 py-1.5 text-sm font-semibold text-mut hover:border-mut hover:text-ink">
+							Détails
+						</a>
 					{/if}
-					<span class="text-xs text-mut">Aperçu issu des résultats TMDB</span>
 				</div>
 			</div>
 		</div>
@@ -194,19 +205,20 @@
 		<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Autres résultats</h2>
 		<ul class="space-y-2">
 			{#each otherResults as result (result.tmdbId)}
+				{@const href = resultHref(result)}
 				<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
-					<div class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
-						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? '🎬' : '📺'} />
-					</div>
+					<a href={href} class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
+						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? 'film' : 'TV'} />
+					</a>
 					<div class="min-w-0 flex-1 py-1">
 						<p class="truncate font-semibold">
-							{result.name}
+							<a href={href} class="hover:text-brand hover:underline">{result.name}</a>
 							{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
 						</p>
 						<p class="truncate text-xs text-mut">
 							{#if result.originalName !== result.name}{result.originalName}{/if}
 							{#if ratingLabel(result.voteAverage)}
-								{result.originalName !== result.name ? ' · ' : ''}TMDB {ratingLabel(result.voteAverage)}/10
+								{result.originalName !== result.name ? ' - ' : ''}TMDB {ratingLabel(result.voteAverage)}/10
 							{/if}
 						</p>
 						{#if result.overview}
@@ -214,10 +226,7 @@
 						{/if}
 					</div>
 					{#if result.localId}
-						<a
-							href="{isFilms ? '/films' : '/series'}/{result.localId}"
-							class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand"
-						>
+						<a href={href} class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand">
 							Voir
 						</a>
 					{:else}
