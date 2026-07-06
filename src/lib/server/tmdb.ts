@@ -62,6 +62,7 @@ export interface TmdbShowSummary {
 	backdrop_path: string | null;
 	first_air_date: string | null;
 	vote_average: number;
+	popularity?: number;
 	origin_country?: string[];
 }
 
@@ -119,8 +120,26 @@ interface TmdbPersonMovieCredits {
 	crew: TmdbMovieCrewCredit[];
 }
 
+interface TmdbTvCastCredit extends TmdbShowSummary {
+	character: string;
+	episode_count?: number;
+}
+
+interface TmdbTvCrewCredit extends TmdbShowSummary {
+	department: string;
+	job: string;
+	episode_count?: number;
+}
+
+interface TmdbPersonTvCredits {
+	cast: TmdbTvCastCredit[];
+	crew: TmdbTvCrewCredit[];
+}
+
 const MAX_PERSON_MATCHES = 3;
 const MAX_MOVIE_RESULTS = 40;
+const MAX_TV_RESULTS = 40;
+const TV_CREW_SEARCH_JOBS = new Set(['Creator', 'Director', 'Writer']);
 
 interface TmdbProvider {
 	provider_name: string;
@@ -186,11 +205,23 @@ export interface TmdbEpisode {
 }
 
 export async function searchTv(query: string): Promise<TmdbShowSummary[]> {
-	const res = await tmdb<{ results: TmdbShowSummary[] }>('/search/tv', {
-		query,
-		include_adult: false
-	});
-	return res.results;
+	const [shows, people] = await Promise.all([
+		tmdb<{ results: TmdbShowSummary[] }>('/search/tv', {
+			query,
+			include_adult: false
+		}),
+		tmdb<{ results: TmdbPersonSummary[] }>('/search/person', {
+			query,
+			include_adult: false
+		})
+	]);
+
+	const peopleCredits = await Promise.all(
+		people.results.slice(0, MAX_PERSON_MATCHES).map((person) => getPersonTvCredits(person.id))
+	);
+	const creditedShows = peopleCredits.flatMap(tvCreditsSearchResults);
+
+	return mergeTvSearchResults(shows.results, creditedShows);
 }
 
 /** Retourne l'id TMDB correspondant à un id de série TheTVDB, ou null. */
@@ -260,6 +291,38 @@ export function mergeMovieSearchResults(
 	for (const movie of [...titleResults, ...creditResults]) {
 		if (!byId.has(movie.id)) byId.set(movie.id, movie);
 		if (byId.size >= MAX_MOVIE_RESULTS) break;
+	}
+	return [...byId.values()];
+}
+
+async function getPersonTvCredits(personId: number): Promise<TmdbPersonTvCredits> {
+	return tmdb<TmdbPersonTvCredits>(`/person/${personId}/tv_credits`);
+}
+
+function tvCreditsSearchResults(credits: TmdbPersonTvCredits): TmdbShowSummary[] {
+	return mergeTvSearchResults(
+		[],
+		[
+			...credits.cast,
+			...credits.crew.filter((credit) => TV_CREW_SEARCH_JOBS.has(credit.job))
+		].sort(tvCreditSort)
+	);
+}
+
+function tvCreditSort(a: TmdbShowSummary, b: TmdbShowSummary): number {
+	const popularity = (b.popularity ?? 0) - (a.popularity ?? 0);
+	if (popularity !== 0) return popularity;
+	return (b.first_air_date ?? '').localeCompare(a.first_air_date ?? '');
+}
+
+export function mergeTvSearchResults(
+	titleResults: TmdbShowSummary[],
+	creditResults: TmdbShowSummary[]
+): TmdbShowSummary[] {
+	const byId = new Map<number, TmdbShowSummary>();
+	for (const show of [...titleResults, ...creditResults]) {
+		if (!byId.has(show.id)) byId.set(show.id, show);
+		if (byId.size >= MAX_TV_RESULTS) break;
 	}
 	return [...byId.values()];
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mergeMovieSearchResults, type TmdbMovieSummary } from './tmdb';
+import { mergeMovieSearchResults, mergeTvSearchResults, type TmdbMovieSummary, type TmdbShowSummary } from './tmdb';
 
 const movie = (id: number, title: string): TmdbMovieSummary => ({
 	id,
@@ -31,3 +31,33 @@ assert.equal(
 	40
 );
 
+
+const show = (id: number, name: string): TmdbShowSummary => ({
+	id,
+	name,
+	original_name: name,
+	overview: '',
+	poster_path: null,
+	backdrop_path: null,
+	first_air_date: null,
+	vote_average: 0
+});
+
+const showTitleMatch = show(1, 'Show title result');
+const duplicateShowCredit = show(1, 'Duplicate show credit');
+const actorShowCredit = show(2, 'Actor show credit');
+const creatorShowCredit = show(3, 'Creator show credit');
+
+assert.deepEqual(mergeTvSearchResults([showTitleMatch], [duplicateShowCredit, actorShowCredit, creatorShowCredit]), [
+	showTitleMatch,
+	actorShowCredit,
+	creatorShowCredit
+]);
+
+assert.equal(
+	mergeTvSearchResults(
+		Array.from({ length: 45 }, (_, index) => show(index + 1, `Show ${index + 1}`)),
+		[]
+	).length,
+	40
+);
