@@ -8,6 +8,8 @@
  *                           active=0 → série désuivie dans TV Time → importée comme "arrêtée"
  * - tracking-prod-records-v2.csv : lignes watch-episode / rewatch-episode = historique complet
  *   (les séries présentes uniquement dans l'historique sont importées comme "arrêtées")
+ * - tracking-prod-records.csv et tracking-prod-records-v2.csv : lignes films watch / rewatch /
+ *   watchlist = collection films et historique complet
  * - user_show_special_status.csv : favorite → favori
  * Le script est idempotent : relançable après une interruption.
  */
@@ -17,8 +19,10 @@ import path from 'node:path';
 import { parse } from 'csv-parse/sync';
 import { sql } from 'drizzle-orm';
 import { db } from '../src/lib/server/db';
+import { addOrUpdateMovie, getMovieByTmdbId } from '../src/lib/server/movies';
 import { addOrUpdateShow, getShowByTvdbId } from '../src/lib/server/shows';
-import { findByTvdbId, searchTv } from '../src/lib/server/tmdb';
+import { findByTvdbId, searchMovie, searchTv } from '../src/lib/server/tmdb';
+import { collectMovieImportData, norm, type MovieToImport, type MovieWatchEvent } from './import-tvtime-utils';
 
 const folder = process.argv[2];
 if (!folder || !fs.existsSync(folder)) {
@@ -55,6 +59,7 @@ interface WatchEvent {
 
 const followedRows = readCsv('followed_tv_show.csv');
 const trackingRows = readCsv('tracking-prod-records-v2.csv');
+const movieTrackingRows = readCsv('tracking-prod-records.csv');
 const statusRows = readCsv('user_show_special_status.csv');
 const statsRows = readCsv('user_statistics.csv');
 
@@ -98,9 +103,11 @@ for (const r of trackingRows) {
 const favoriteTvdbIds = new Set(
 	statusRows.filter((r) => r.status === 'favorite').map((r) => Number(r.tv_show_id))
 );
+const movieImportData = collectMovieImportData([...movieTrackingRows, ...trackingRows]);
 
 console.log(`Séries à importer : ${showsToImport.size} (dont ${[...showsToImport.values()].filter((s) => !s.archived).length} actives)`);
 console.log(`Épisodes vus (événements) : ${watchEvents.length}\n`);
+console.log(`Films à importer : ${movieImportData.moviesToImport.size} (dont ${movieImportData.watchEvents.length} visionnage(s))\n`);
 
 // ---------- 2. Import des séries depuis TMDB (concurrence 5) ----------
 
@@ -110,9 +117,6 @@ const matchedByName: { name: string; tmdbName: string; tmdbId: number }[] = [];
 const tvdbToLocalId = new Map<number, number>();
 let imported = 0;
 let skipped = 0;
-
-const norm = (s: string) =>
-	s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
 /**
  * TMDB stocke parfois un id TheTVDB différent de celui de l'export TV Time
@@ -179,11 +183,72 @@ async function worker(): Promise<void> {
 }
 await Promise.all(Array.from({ length: 5 }, worker));
 
-// ---------- 3. Insertion des visionnages ----------
+// ---------- 3. Import des films depuis TMDB ----------
+
+const unmappedMovies: MovieToImport[] = [];
+const failedMovies: { movie: MovieToImport; error: string }[] = [];
+const matchedMoviesByName: { name: string; tmdbTitle: string; tmdbId: number }[] = [];
+const movieKeyToLocalId = new Map<string, number>();
+let moviesImported = 0;
+let moviesSkipped = 0;
+
+async function resolveMovieTmdbId(item: MovieToImport): Promise<number | null> {
+	const results = await searchMovie(item.name);
+	let candidates = results;
+	if (item.releaseYear) {
+		const sameYear = results.filter((r) => r.release_date?.slice(0, 4) === item.releaseYear);
+		if (sameYear.length) candidates = sameYear;
+	}
+	const exact = candidates.find(
+		(r) => norm(r.title) === norm(item.name) || norm(r.original_title) === norm(item.name)
+	);
+	const pick = exact ?? candidates[0];
+	if (!pick) return null;
+	if (!exact) matchedMoviesByName.push({ name: item.name, tmdbTitle: pick.title, tmdbId: pick.id });
+	return pick.id;
+}
+
+async function importMovie(item: MovieToImport): Promise<void> {
+	const tmdbId = await resolveMovieTmdbId(item);
+	if (!tmdbId) {
+		unmappedMovies.push(item);
+		return;
+	}
+	const existing = getMovieByTmdbId(tmdbId);
+	if (existing) {
+		movieKeyToLocalId.set(item.key, existing.id);
+		moviesSkipped++;
+		return;
+	}
+	const movie = await addOrUpdateMovie(tmdbId, { addedAt: item.addedAt });
+	movieKeyToLocalId.set(item.key, movie.id);
+	moviesImported++;
+	console.log(`✓ [film ${moviesImported + moviesSkipped}/${movieImportData.moviesToImport.size}] ${movie.title} (${item.source})`);
+}
+
+const movieQueue = [...movieImportData.moviesToImport.values()];
+async function movieWorker(): Promise<void> {
+	for (;;) {
+		const item = movieQueue.shift();
+		if (!item) return;
+		try {
+			await importMovie(item);
+		} catch (e) {
+			failedMovies.push({ movie: item, error: String(e) });
+			console.error(`✗ ${item.name} : ${e}`);
+		}
+	}
+}
+await Promise.all(Array.from({ length: 5 }, movieWorker));
+
+// ---------- 4. Insertion des visionnages ----------
 
 let watchesInserted = 0;
 let watchesAlready = 0;
 const unmatchedEpisodes: WatchEvent[] = [];
+let movieWatchesInserted = 0;
+let movieWatchesAlready = 0;
+const unmatchedMovieWatches: MovieWatchEvent[] = [];
 
 const findEpisode = db.$client.prepare(
 	'SELECT id FROM episodes WHERE show_id = ? AND season_number = ? AND episode_number = ?'
@@ -192,6 +257,10 @@ const findWatch = db.$client.prepare(
 	'SELECT id FROM watches WHERE episode_id = ? AND watched_at = ?'
 );
 const insertWatch = db.$client.prepare('INSERT INTO watches (episode_id, watched_at) VALUES (?, ?)');
+const findMovieWatch = db.$client.prepare(
+	'SELECT id FROM movie_watches WHERE movie_id = ? AND watched_at = ?'
+);
+const insertMovieWatch = db.$client.prepare('INSERT INTO movie_watches (movie_id, watched_at) VALUES (?, ?)');
 
 for (const ev of watchEvents) {
 	const showId = tvdbToLocalId.get(ev.tvdbShowId);
@@ -212,32 +281,67 @@ for (const ev of watchEvents) {
 	watchesInserted++;
 }
 
-// ---------- 4. Rapport ----------
+for (const ev of movieImportData.watchEvents) {
+	const movieId = movieKeyToLocalId.get(ev.key);
+	if (!movieId) {
+		unmatchedMovieWatches.push(ev);
+		continue;
+	}
+	if (findMovieWatch.get(movieId, ev.watchedAt)) {
+		movieWatchesAlready++;
+		continue;
+	}
+	insertMovieWatch.run(movieId, ev.watchedAt);
+	movieWatchesInserted++;
+}
+
+// ---------- 5. Rapport ----------
 
 const totals = db.get<{ minutes: number; episodes: number }>(sql`
 	SELECT COALESCE(SUM(COALESCE(e.runtime, s.episode_run_time, 45)), 0) AS minutes,
 		COUNT(DISTINCT w.episode_id) AS episodes
 	FROM watches w JOIN episodes e ON e.id = w.episode_id JOIN shows s ON s.id = e.show_id
 `);
+const movieTotals = db.get<{ minutes: number; movies: number }>(sql`
+	SELECT COALESCE(SUM(COALESCE(m.runtime, 110)), 0) AS minutes,
+		COUNT(DISTINCT w.movie_id) AS movies
+	FROM movie_watches w JOIN movies m ON m.id = w.movie_id
+`);
 const refMinutes = Number(statsRows[0]?.time_spent ?? 0);
+const totalMinutes = (totals?.minutes ?? 0) + (movieTotals?.minutes ?? 0);
 
 console.log('\n================ RAPPORT ================');
 console.log(`Séries importées : ${imported} (déjà présentes : ${skipped})`);
+console.log(`Films importés : ${moviesImported} (déjà présents : ${moviesSkipped})`);
 console.log(`Visionnages insérés : ${watchesInserted} (déjà présents : ${watchesAlready})`);
+console.log(`Visionnages films insérés : ${movieWatchesInserted} (déjà présents : ${movieWatchesAlready})`);
 console.log(`Épisodes vus distincts en base : ${totals?.episodes}`);
-console.log(`Temps total calculé : ${totals?.minutes} min${refMinutes ? ` (référence TV Time : ${refMinutes} min)` : ''}`);
+console.log(`Films vus distincts en base : ${movieTotals?.movies}`);
+console.log(`Temps total calculé : ${totalMinutes} min${refMinutes ? ` (référence TV Time : ${refMinutes} min)` : ''}`);
 
 if (matchedByName.length) {
 	console.log(`\nℹ ${matchedByName.length} séries mappées par nom (id TVDB inconnu de TMDB) — à vérifier :`);
 	for (const s of matchedByName) console.log(`  - "${s.name}" → "${s.tmdbName}" (tmdb ${s.tmdbId})`);
 }
+if (matchedMoviesByName.length) {
+	console.log(`\nℹ ${matchedMoviesByName.length} films mappés par nom — à vérifier :`);
+	for (const m of matchedMoviesByName) console.log(`  - "${m.name}" → "${m.tmdbTitle}" (tmdb ${m.tmdbId})`);
+}
 if (unmappedShows.length) {
 	console.log(`\n⚠ ${unmappedShows.length} séries introuvables sur TMDB (à ajouter via la recherche) :`);
 	for (const s of unmappedShows) console.log(`  - ${s.name} (tvdb ${s.tvdbId}, ${s.source})`);
 }
+if (unmappedMovies.length) {
+	console.log(`\n⚠ ${unmappedMovies.length} films introuvables sur TMDB (à ajouter via la recherche) :`);
+	for (const m of unmappedMovies) console.log(`  - ${m.name}${m.releaseYear ? ` (${m.releaseYear})` : ''} (${m.source})`);
+}
 if (failedShows.length) {
 	console.log(`\n✗ ${failedShows.length} séries en échec (relancez l'import) :`);
 	for (const f of failedShows) console.log(`  - ${f.show.name} : ${f.error}`);
+}
+if (failedMovies.length) {
+	console.log(`\n✗ ${failedMovies.length} films en échec (relancez l'import) :`);
+	for (const f of failedMovies) console.log(`  - ${f.movie.name} : ${f.error}`);
 }
 if (unmatchedEpisodes.length) {
 	console.log(`\n⚠ ${unmatchedEpisodes.length} visionnages non rattachés à un épisode :`);
@@ -246,5 +350,14 @@ if (unmatchedEpisodes.length) {
 		byShow.set(ev.seriesName, (byShow.get(ev.seriesName) ?? 0) + 1);
 	}
 	for (const [name, count] of byShow) console.log(`  - ${name} : ${count} épisode(s)`);
+}
+if (unmatchedMovieWatches.length) {
+	console.log(`\n⚠ ${unmatchedMovieWatches.length} visionnages non rattachés à un film :`);
+	const byMovie = new Map<string, number>();
+	for (const ev of unmatchedMovieWatches) {
+		const name = `${ev.movieName}${ev.releaseYear ? ` (${ev.releaseYear})` : ''}`;
+		byMovie.set(name, (byMovie.get(name) ?? 0) + 1);
+	}
+	for (const [name, count] of byMovie) console.log(`  - ${name} : ${count} visionnage(s)`);
 }
 console.log('=========================================');
