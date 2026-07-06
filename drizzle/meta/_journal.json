@@ -15,6 +15,13 @@
       "when": 1783259713243,
       "tag": "0001_young_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783359001652,
+      "tag": "0002_romantic_joshua_kane",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { db } from '$lib/server/db';
 import { shows, watches } from '$lib/server/db/schema';
 import { getEpisodesWithWatch, getShowsWithProgress, type EpisodeWithWatch } from '$lib/server/queries';
 import { addOrUpdateShow } from '$lib/server/shows';
-import type { StoredProviders } from '$lib/server/tmdb';
+import type { StoredCastMember, StoredProviders } from '$lib/server/tmdb';
 import type { Actions, PageServerLoad } from './$types';
 
 function requireShow(id: number) {
@@ -43,7 +43,8 @@ export const load: PageServerLoad = ({ params }) => {
 		show: {
 			...show,
 			genres: JSON.parse(show.genres) as string[],
-			providers: show.watchProviders ? (JSON.parse(show.watchProviders) as StoredProviders) : null
+			providers: show.watchProviders ? (JSON.parse(show.watchProviders) as StoredProviders) : null,
+			cast: JSON.parse(show.cast ?? '[]') as StoredCastMember[]
 		},
 		seasons,
 		openSeason,

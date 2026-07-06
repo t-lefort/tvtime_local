@@ -21,7 +21,9 @@ export const shows = sqliteTable('shows', {
 	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
 	lastSyncedAt: text('last_synced_at'),
 	// Plateformes de streaming (JSON StoredProviders, source JustWatch via TMDB)
-	watchProviders: text('watch_providers')
+	watchProviders: text('watch_providers'),
+	// Distribution principale (JSON StoredCastMember[], via TMDB)
+	cast: text('cast')
 });
 
 export const episodes = sqliteTable(
@@ -76,7 +78,9 @@ export const movies = sqliteTable('movies', {
 		.default(sql`(datetime('now'))`),
 	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
 	lastSyncedAt: text('last_synced_at'),
-	watchProviders: text('watch_providers')
+	watchProviders: text('watch_providers'),
+	// Distribution principale (JSON StoredCastMember[], via TMDB)
+	cast: text('cast')
 });
 
 export const movieWatches = sqliteTable(

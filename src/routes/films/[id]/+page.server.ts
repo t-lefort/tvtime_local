@@ -4,7 +4,7 @@ import { db } from '$lib/server/db';
 import { movies, movieWatches } from '$lib/server/db/schema';
 import { getMoviesWithWatch } from '$lib/server/queries';
 import { addOrUpdateMovie } from '$lib/server/movies';
-import type { StoredProviders } from '$lib/server/tmdb';
+import type { StoredCastMember, StoredProviders } from '$lib/server/tmdb';
 import type { Actions, PageServerLoad } from './$types';
 
 function requireMovie(id: number) {
@@ -23,7 +23,8 @@ export const load: PageServerLoad = ({ params }) => {
 			genres: JSON.parse(movie.genres) as string[],
 			providers: movie.watchProviders
 				? (JSON.parse(movie.watchProviders) as StoredProviders)
-				: null
+				: null,
+			cast: JSON.parse(movie.cast ?? '[]') as StoredCastMember[]
 		}
 	};
 };

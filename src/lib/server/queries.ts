@@ -142,7 +142,7 @@ export function getShowsWithProgress(showId?: number): ShowWithProgress[] {
 			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.genres,
 			s.episode_run_time AS episodeRunTime, s.followed_at AS followedAt,
 			s.archived, s.favorite, s.last_synced_at AS lastSyncedAt,
-			s.watch_providers AS watchProviders,
+			s.watch_providers AS watchProviders, s.cast,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')) AS airedCount,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0) AS totalCount,
@@ -183,7 +183,7 @@ export function getMoviesWithWatch(movieId?: number): MovieWithWatch[] {
 		SELECT m.id, m.tmdb_id AS tmdbId, m.title, m.original_title AS originalTitle,
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
 			m.release_date AS releaseDate, m.runtime, m.genres, m.added_at AS addedAt,
-			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders,
+			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id) AS watchCount,
 			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id) AS lastWatchedAt
 		FROM movies m

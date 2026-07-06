@@ -77,6 +77,7 @@ export interface TmdbShowDetails extends TmdbShowSummary {
 	last_air_date: string | null;
 	networks?: { name: string }[];
 	'watch/providers'?: TmdbWatchProviders;
+	credits?: TmdbCredits;
 }
 
 export interface TmdbMovieSummary {
@@ -96,6 +97,7 @@ export interface TmdbMovieDetails extends TmdbMovieSummary {
 	runtime: number | null;
 	genres: { id: number; name: string }[];
 	'watch/providers'?: TmdbWatchProviders;
+	credits?: TmdbCredits;
 }
 
 interface TmdbPersonSummary {
@@ -103,6 +105,45 @@ interface TmdbPersonSummary {
 	name: string;
 	known_for_department: string;
 	popularity: number;
+}
+
+export interface TmdbCastMember {
+	id: number;
+	name: string;
+	character: string;
+	profile_path: string | null;
+	order: number;
+}
+
+interface TmdbCredits {
+	cast?: TmdbCastMember[];
+}
+
+/** Acteur stocké en base (colonne cast, JSON). Distribution principale via TMDB. */
+export interface StoredCastMember {
+	id: number;
+	name: string;
+	character: string | null;
+	profilePath: string | null;
+}
+
+/** Nombre d'acteurs conservés dans la distribution (les plus haut au générique). */
+const MAX_CAST = 15;
+
+/** Réduit les crédits TMDB à la distribution principale, prête à stocker. */
+export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[] {
+	const cast = credits?.cast;
+	if (!cast?.length) return [];
+	return cast
+		.slice()
+		.sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
+		.slice(0, MAX_CAST)
+		.map((c) => ({
+			id: c.id,
+			name: c.name,
+			character: c.character || null,
+			profilePath: c.profile_path
+		}));
 }
 
 interface TmdbMovieCastCredit extends TmdbMovieSummary {
@@ -234,7 +275,7 @@ export async function findByTvdbId(tvdbId: number): Promise<number | null> {
 
 export async function getShowDetails(tmdbId: number): Promise<TmdbShowDetails> {
 	return tmdb<TmdbShowDetails>(`/tv/${tmdbId}`, {
-		append_to_response: 'external_ids,watch/providers'
+		append_to_response: 'external_ids,watch/providers,credits'
 	});
 }
 
@@ -329,7 +370,7 @@ export function mergeTvSearchResults(
 
 export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails> {
 	return tmdb<TmdbMovieDetails>(`/movie/${tmdbId}`, {
-		append_to_response: 'watch/providers'
+		append_to_response: 'watch/providers,credits'
 	});
 }
 
@@ -337,4 +378,91 @@ export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails>
 export async function getProviders(kind: 'tv' | 'movie', tmdbId: number): Promise<StoredProviders | null> {
 	const raw = await tmdb<TmdbWatchProviders>(`/${kind}/${tmdbId}/watch/providers`);
 	return extractProviders(raw);
+}
+
+export interface TmdbPersonDetails {
+	id: number;
+	name: string;
+	biography: string;
+	profile_path: string | null;
+	known_for_department: string | null;
+	birthday: string | null;
+	deathday: string | null;
+	place_of_birth: string | null;
+}
+
+/** Un titre (film ou série) de la filmographie d'une personne. */
+export interface PersonCredit {
+	tmdbId: number;
+	title: string;
+	posterPath: string | null;
+	date: string | null;
+	role: string | null;
+	voteAverage: number;
+	popularity: number;
+}
+
+export interface PersonFilmography {
+	person: TmdbPersonDetails;
+	movies: PersonCredit[];
+	shows: PersonCredit[];
+}
+
+/** Nombre de titres conservés par type dans la filmographie d'une personne. */
+const MAX_FILMOGRAPHY = 40;
+
+export async function getPersonDetails(personId: number): Promise<TmdbPersonDetails> {
+	return tmdb<TmdbPersonDetails>(`/person/${personId}`);
+}
+
+/** Fiche d'une personne + ses films et séries (rôles d'acteur), triés par notoriété. */
+export async function getPersonFilmography(personId: number): Promise<PersonFilmography> {
+	const [person, movieCredits, tvCredits] = await Promise.all([
+		getPersonDetails(personId),
+		getPersonMovieCredits(personId),
+		getPersonTvCredits(personId)
+	]);
+
+	const movies = collectFilmography(movieCredits.cast, (c) => ({
+		tmdbId: c.id,
+		title: c.title || c.original_title,
+		posterPath: c.poster_path,
+		date: c.release_date || null,
+		role: c.character || null,
+		voteAverage: c.vote_average,
+		popularity: c.popularity ?? 0
+	}));
+
+	const shows = collectFilmography(tvCredits.cast, (c) => ({
+		tmdbId: c.id,
+		title: c.name || c.original_name,
+		posterPath: c.poster_path,
+		date: c.first_air_date || null,
+		role: c.character || null,
+		voteAverage: c.vote_average,
+		popularity: c.popularity ?? 0
+	}));
+
+	return { person, movies, shows };
+}
+
+/** Dédoublonne par titre (plusieurs rôles → rôles fusionnés), trie et plafonne. */
+function collectFilmography<T>(credits: T[], toCredit: (credit: T) => PersonCredit): PersonCredit[] {
+	const byId = new Map<number, PersonCredit>();
+	for (const credit of credits) {
+		const item = toCredit(credit);
+		const existing = byId.get(item.tmdbId);
+		if (!existing) {
+			byId.set(item.tmdbId, item);
+		} else if (item.role && !existing.role?.includes(item.role)) {
+			existing.role = existing.role ? `${existing.role} / ${item.role}` : item.role;
+		}
+	}
+	return [...byId.values()].sort(personCreditSort).slice(0, MAX_FILMOGRAPHY);
+}
+
+function personCreditSort(a: PersonCredit, b: PersonCredit): number {
+	const popularity = b.popularity - a.popularity;
+	if (popularity !== 0) return popularity;
+	return (b.date ?? '').localeCompare(a.date ?? '');
 }

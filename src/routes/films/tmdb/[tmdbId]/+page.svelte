@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { tmdbImg, yearOf } from '$lib/format';
@@ -80,5 +81,7 @@
 {#if movie.overview}
 	<p class="mt-4 text-sm leading-relaxed text-mut">{movie.overview}</p>
 {/if}
+
+<CastList cast={movie.cast} />
 
 <WatchProviders providers={movie.providers} />

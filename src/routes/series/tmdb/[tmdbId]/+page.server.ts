@@ -1,6 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 import { addOrUpdateShow, getShowByTmdbId } from '$lib/server/shows';
-import { extractProviders, getShowDetails } from '$lib/server/tmdb';
+import { extractCast, extractProviders, getShowDetails } from '$lib/server/tmdb';
 import type { Actions, PageServerLoad } from './$types';
 
 function tmdbIdFromParam(value: string): number {
@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const localShow = getShowByTmdbId(tmdbId);
 	const details = await getShowDetails(tmdbId);
 	const providers = extractProviders(details['watch/providers']);
+	const cast = extractCast(details.credits);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=series&q=${encodeURIComponent(q)}` : '/recherche?type=series';
 
@@ -34,7 +35,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			numberOfSeasons: details.number_of_seasons,
 			genres: details.genres.map((g) => g.name),
 			networks: details.networks?.map((network) => network.name) ?? [],
-			providers
+			providers,
+			cast
 		}
 	};
 };

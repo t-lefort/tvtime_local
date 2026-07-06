@@ -1,6 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 import { addOrUpdateMovie, getMovieByTmdbId } from '$lib/server/movies';
-import { extractProviders, getMovieDetails } from '$lib/server/tmdb';
+import { extractCast, extractProviders, getMovieDetails } from '$lib/server/tmdb';
 import type { Actions, PageServerLoad } from './$types';
 
 function tmdbIdFromParam(value: string): number {
@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const localMovie = getMovieByTmdbId(tmdbId);
 	const details = await getMovieDetails(tmdbId);
 	const providers = extractProviders(details['watch/providers']);
+	const cast = extractCast(details.credits);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=films&q=${encodeURIComponent(q)}` : '/recherche?type=films';
 
@@ -30,7 +31,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			releaseDate: details.release_date || null,
 			runtime: details.runtime ?? null,
 			genres: details.genres.map((g) => g.name),
-			providers
+			providers,
+			cast
 		}
 	};
 };

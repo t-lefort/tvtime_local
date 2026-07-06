@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
@@ -126,6 +127,8 @@
 {#if show.overview}
 	<p class="mt-4 text-sm leading-relaxed text-mut">{show.overview}</p>
 {/if}
+
+<CastList cast={show.cast} />
 
 <WatchProviders providers={show.providers} />
 
