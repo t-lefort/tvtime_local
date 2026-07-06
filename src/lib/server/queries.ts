@@ -7,6 +7,7 @@ const DEFAULT_MOVIE_RUNTIME = 110;
 
 export interface WatchNextItem {
 	showId: number;
+	showTmdbId: number;
 	showName: string;
 	posterPath: string | null;
 	episodeId: number;
@@ -22,6 +23,7 @@ export interface WatchNextItem {
 interface UnwatchedRow {
 	episodeId: number;
 	showId: number;
+	showTmdbId: number;
 	seasonNumber: number;
 	episodeNumber: number;
 	episodeName: string | null;
@@ -35,7 +37,7 @@ interface UnwatchedRow {
 /** Prochain épisode à voir par série suivie (non archivée), trié par activité récente. */
 export function getWatchNext(): WatchNextItem[] {
 	const rows = db.all<UnwatchedRow>(sql`
-		SELECT e.id AS episodeId, e.show_id AS showId, e.season_number AS seasonNumber,
+		SELECT e.id AS episodeId, e.show_id AS showId, s.tmdb_id AS showTmdbId, e.season_number AS seasonNumber,
 			e.episode_number AS episodeNumber, e.name AS episodeName, e.air_date AS airDate,
 			e.still_path AS stillPath, s.name AS showName, s.poster_path AS posterPath,
 			s.followed_at AS followedAt
@@ -65,6 +67,7 @@ export function getWatchNext(): WatchNextItem[] {
 		}
 		byShow.set(r.showId, {
 			showId: r.showId,
+			showTmdbId: r.showTmdbId,
 			showName: r.showName,
 			posterPath: r.posterPath,
 			episodeId: r.episodeId,
@@ -88,6 +91,7 @@ export function getWatchNext(): WatchNextItem[] {
 export interface UpcomingItem {
 	episodeId: number;
 	showId: number;
+	showTmdbId: number;
 	showName: string;
 	posterPath: string | null;
 	seasonNumber: number;
@@ -99,8 +103,8 @@ export interface UpcomingItem {
 /** Épisodes à venir des séries suivies non archivées, sur 1 an. */
 export function getUpcoming(): UpcomingItem[] {
 	return db.all<UpcomingItem>(sql`
-		SELECT e.id AS episodeId, s.id AS showId, s.name AS showName, s.poster_path AS posterPath,
-			e.season_number AS seasonNumber, e.episode_number AS episodeNumber,
+		SELECT e.id AS episodeId, s.id AS showId, s.tmdb_id AS showTmdbId, s.name AS showName,
+			s.poster_path AS posterPath, e.season_number AS seasonNumber, e.episode_number AS episodeNumber,
 			e.name AS episodeName, e.air_date AS airDate
 		FROM episodes e
 		JOIN shows s ON s.id = e.show_id
@@ -135,14 +139,20 @@ export function computeState(s: {
 	return s.tmdbStatus === 'Ended' || s.tmdbStatus === 'Canceled' ? 'finished' : 'uptodate';
 }
 
-export function getShowsWithProgress(showId?: number): ShowWithProgress[] {
+export function getShowsWithProgress(filter?: { id?: number; tmdbId?: number }): ShowWithProgress[] {
+	const where =
+		filter?.id !== undefined
+			? sql`WHERE s.id = ${filter.id}`
+			: filter?.tmdbId !== undefined
+				? sql`WHERE s.tmdb_id = ${filter.tmdbId}`
+				: sql``;
 	const rows = db.all<Record<string, unknown>>(sql`
 		SELECT s.id, s.tmdb_id AS tmdbId, s.tvdb_id AS tvdbId, s.name, s.original_name AS originalName,
 			s.overview, s.poster_path AS posterPath, s.backdrop_path AS backdropPath,
 			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.genres,
 			s.episode_run_time AS episodeRunTime, s.followed_at AS followedAt,
 			s.archived, s.favorite, s.last_synced_at AS lastSyncedAt,
-			s.watch_providers AS watchProviders,
+			s.watch_providers AS watchProviders, s.cast,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')) AS airedCount,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0) AS totalCount,
@@ -154,7 +164,7 @@ export function getShowsWithProgress(showId?: number): ShowWithProgress[] {
 				FROM watches w JOIN episodes e ON e.id = w.episode_id
 				WHERE e.show_id = s.id) AS minutesWatched
 		FROM shows s
-		${showId !== undefined ? sql`WHERE s.id = ${showId}` : sql``}
+		${where}
 		ORDER BY s.name COLLATE NOCASE
 	`);
 	return rows.map((r) => {
@@ -178,16 +188,22 @@ export interface MovieWithWatch extends Movie {
 	lastWatchedAt: string | null;
 }
 
-export function getMoviesWithWatch(movieId?: number): MovieWithWatch[] {
+export function getMoviesWithWatch(filter?: { id?: number; tmdbId?: number }): MovieWithWatch[] {
+	const where =
+		filter?.id !== undefined
+			? sql`WHERE m.id = ${filter.id}`
+			: filter?.tmdbId !== undefined
+				? sql`WHERE m.tmdb_id = ${filter.tmdbId}`
+				: sql``;
 	const rows = db.all<Record<string, unknown>>(sql`
 		SELECT m.id, m.tmdb_id AS tmdbId, m.title, m.original_title AS originalTitle,
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
 			m.release_date AS releaseDate, m.runtime, m.genres, m.added_at AS addedAt,
-			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders,
+			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id) AS watchCount,
 			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id) AS lastWatchedAt
 		FROM movies m
-		${movieId !== undefined ? sql`WHERE m.id = ${movieId}` : sql``}
+		${where}
 		ORDER BY m.title COLLATE NOCASE
 	`);
 	return rows.map((r) => ({ ...(r as unknown as MovieWithWatch), favorite: Boolean(r.favorite) }));

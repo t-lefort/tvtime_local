@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { movies, type Movie } from './db/schema';
-import { extractProviders, getMovieDetails } from './tmdb';
+import { extractCast, extractProviders, getMovieDetails } from './tmdb';
 
 export interface AddMovieOptions {
 	favorite?: boolean;
@@ -15,6 +15,7 @@ export interface AddMovieOptions {
 export async function addOrUpdateMovie(tmdbId: number, opts: AddMovieOptions = {}): Promise<Movie> {
 	const details = await getMovieDetails(tmdbId);
 	const providers = extractProviders(details['watch/providers']);
+	const cast = extractCast(details.credits);
 
 	const base = {
 		title: details.title || details.original_title,
@@ -26,6 +27,7 @@ export async function addOrUpdateMovie(tmdbId: number, opts: AddMovieOptions = {
 		runtime: details.runtime ?? null,
 		genres: JSON.stringify(details.genres.map((g) => g.name)),
 		watchProviders: providers ? JSON.stringify(providers) : null,
+		cast: cast.length ? JSON.stringify(cast) : null,
 		lastSyncedAt: sql`(datetime('now'))` as unknown as string
 	};
 

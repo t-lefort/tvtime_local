@@ -38,6 +38,7 @@ export const load: PageServerLoad = () => {
 			.filter((s) => s.minutesWatched > 0)
 			.map((s) => ({
 				id: s.id,
+				tmdbId: s.tmdbId,
 				name: s.name,
 				posterPath: s.posterPath,
 				minutesWatched: s.minutesWatched,

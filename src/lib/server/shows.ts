@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { episodes, shows, type Show } from './db/schema';
-import { extractProviders, getSeasonEpisodes, getShowDetails } from './tmdb';
+import { extractCast, extractProviders, getSeasonEpisodes, getShowDetails } from './tmdb';
 
 export interface AddShowOptions {
 	tvdbId?: number | null;
@@ -17,6 +17,7 @@ export interface AddShowOptions {
 export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {}): Promise<Show> {
 	const details = await getShowDetails(tmdbId);
 	const providers = extractProviders(details['watch/providers']);
+	const cast = extractCast(details.credits);
 
 	const base = {
 		tvdbId: opts.tvdbId ?? details.external_ids?.tvdb_id ?? null,
@@ -30,6 +31,7 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 		genres: JSON.stringify(details.genres.map((g) => g.name)),
 		episodeRunTime: details.episode_run_time?.[0] ?? null,
 		watchProviders: providers ? JSON.stringify(providers) : null,
+		cast: cast.length ? JSON.stringify(cast) : null,
 		lastSyncedAt: sql`(datetime('now'))` as unknown as string
 	};
 

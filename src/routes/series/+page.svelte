@@ -41,7 +41,7 @@
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4">
 		{#each data.shows as show (show.id)}
-			<a href="/series/{show.id}" class="group">
+			<a href="/series/{show.tmdbId}" class="group">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 					<div class="h-full w-full {show.state === 'stopped' ? 'opacity-40 grayscale' : ''}">
 						<Poster path={show.posterPath} alt={show.name} size="w342" />
