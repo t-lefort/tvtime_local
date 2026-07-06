@@ -87,6 +87,8 @@ export interface TmdbMovieSummary {
 	backdrop_path: string | null;
 	release_date: string | null;
 	vote_average: number;
+	popularity?: number;
+	vote_count?: number;
 }
 
 export interface TmdbMovieDetails extends TmdbMovieSummary {
@@ -94,6 +96,31 @@ export interface TmdbMovieDetails extends TmdbMovieSummary {
 	genres: { id: number; name: string }[];
 	'watch/providers'?: TmdbWatchProviders;
 }
+
+interface TmdbPersonSummary {
+	id: number;
+	name: string;
+	known_for_department: string;
+	popularity: number;
+}
+
+interface TmdbMovieCastCredit extends TmdbMovieSummary {
+	character: string;
+	order?: number;
+}
+
+interface TmdbMovieCrewCredit extends TmdbMovieSummary {
+	department: string;
+	job: string;
+}
+
+interface TmdbPersonMovieCredits {
+	cast: TmdbMovieCastCredit[];
+	crew: TmdbMovieCrewCredit[];
+}
+
+const MAX_PERSON_MATCHES = 3;
+const MAX_MOVIE_RESULTS = 40;
 
 interface TmdbProvider {
 	provider_name: string;
@@ -186,11 +213,55 @@ export async function getSeasonEpisodes(tmdbId: number, seasonNumber: number): P
 }
 
 export async function searchMovie(query: string): Promise<TmdbMovieSummary[]> {
-	const res = await tmdb<{ results: TmdbMovieSummary[] }>('/search/movie', {
-		query,
-		include_adult: false
-	});
-	return res.results;
+	const [movies, people] = await Promise.all([
+		tmdb<{ results: TmdbMovieSummary[] }>('/search/movie', {
+			query,
+			include_adult: false
+		}),
+		tmdb<{ results: TmdbPersonSummary[] }>('/search/person', {
+			query,
+			include_adult: false
+		})
+	]);
+
+	const peopleCredits = await Promise.all(
+		people.results.slice(0, MAX_PERSON_MATCHES).map((person) => getPersonMovieCredits(person.id))
+	);
+	const creditedMovies = peopleCredits.flatMap(movieCreditsSearchResults);
+
+	return mergeMovieSearchResults(movies.results, creditedMovies);
+}
+
+async function getPersonMovieCredits(personId: number): Promise<TmdbPersonMovieCredits> {
+	return tmdb<TmdbPersonMovieCredits>(`/person/${personId}/movie_credits`);
+}
+
+function movieCreditsSearchResults(credits: TmdbPersonMovieCredits): TmdbMovieSummary[] {
+	return mergeMovieSearchResults(
+		[],
+		[
+			...credits.cast,
+			...credits.crew.filter((credit) => credit.job === 'Director')
+		].sort(movieCreditSort)
+	);
+}
+
+function movieCreditSort(a: TmdbMovieSummary, b: TmdbMovieSummary): number {
+	const popularity = (b.popularity ?? 0) - (a.popularity ?? 0);
+	if (popularity !== 0) return popularity;
+	return (b.release_date ?? '').localeCompare(a.release_date ?? '');
+}
+
+export function mergeMovieSearchResults(
+	titleResults: TmdbMovieSummary[],
+	creditResults: TmdbMovieSummary[]
+): TmdbMovieSummary[] {
+	const byId = new Map<number, TmdbMovieSummary>();
+	for (const movie of [...titleResults, ...creditResults]) {
+		if (!byId.has(movie.id)) byId.set(movie.id, movie);
+		if (byId.size >= MAX_MOVIE_RESULTS) break;
+	}
+	return [...byId.values()];
 }
 
 export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails> {
