@@ -7,11 +7,11 @@ services:
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-}
-      # URL exacte d'accès à l'app (requis pour valider les formulaires hors localhost)
+      # Exact URL used to access the app (required for form submissions outside localhost)
       - ORIGIN=${ORIGIN:-http://localhost:3000}
       - TZ=Europe/Paris
     volumes:
       - ./data:/app/data
-      # Décommenter pour lancer l'import GDPR depuis le container :
+      # Uncomment to run the GDPR import from inside the container:
       # - C:\Users\lefor\Desktop\gdpr-data:/gdpr:ro
     restart: unless-stopped
