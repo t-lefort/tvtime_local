@@ -10,6 +10,46 @@
 	// Force le rechargement de l'image après un envoi (l'URL ne change pas sinon)
 	let avatarBump = $state(0);
 
+	/**
+	 * Image réduite côté navigateur avant l'envoi : l'avatar est affiché en ~64 px,
+	 * inutile d'envoyer une photo de plusieurs Mo (et le serveur Node limite la
+	 * taille des requêtes, BODY_SIZE_LIMIT). Recadrée carrée, 256 px, JPEG.
+	 */
+	let avatarResized = $state<Blob | null>(null);
+	const AVATAR_SIZE = 256;
+
+	async function prepareAvatar() {
+		avatarResized = null;
+		const file = avatarFile?.[0];
+		if (!file) return;
+		try {
+			const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+			const side = Math.min(bitmap.width, bitmap.height);
+			const canvas = document.createElement('canvas');
+			canvas.width = canvas.height = Math.min(AVATAR_SIZE, side);
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return;
+			ctx.drawImage(
+				bitmap,
+				(bitmap.width - side) / 2,
+				(bitmap.height - side) / 2,
+				side,
+				side,
+				0,
+				0,
+				canvas.width,
+				canvas.height
+			);
+			bitmap.close();
+			avatarResized = await new Promise<Blob | null>((resolve) =>
+				canvas.toBlob(resolve, 'image/jpeg', 0.85)
+			);
+		} catch {
+			// Format que le navigateur ne sait pas décoder : le fichier partira tel quel,
+			// les contrôles serveur (type, 2 Mo max) s'appliquent
+		}
+	}
+
 	const maxMonth = $derived(Math.max(1, ...data.months.map((m) => m.count)));
 	const maxGenre = $derived(Math.max(1, ...data.perGenre.map((g) => g.minutes)));
 
@@ -119,11 +159,13 @@
 			method="POST"
 			action="?/avatar"
 			enctype="multipart/form-data"
-			use:enhance={() => {
+			use:enhance={({ formData }) => {
+				if (avatarResized) formData.set('avatar', avatarResized, 'avatar.jpg');
 				return async ({ update }) => {
 					await update();
 					avatarBump++;
 					avatarFile = null;
+					avatarResized = null;
 				};
 			}}
 			class="flex flex-wrap items-center gap-3"
@@ -144,6 +186,7 @@
 				name="avatar"
 				accept="image/png,image/jpeg,image/webp,image/gif"
 				bind:files={avatarFile}
+				onchange={prepareAvatar}
 				class="max-w-full min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button

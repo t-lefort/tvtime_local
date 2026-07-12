@@ -59,6 +59,7 @@ docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
 | `TMDB_API_KEY` | TMDB API key (required) |
 | `AUTH_PASSWORD` | Login password; empty = no authentication (LAN use) |
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
+| `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
 
 ## Deploying to a server (CI + Portainer)
