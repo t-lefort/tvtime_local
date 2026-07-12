@@ -6,6 +6,49 @@
 	let { data, form } = $props();
 	let importFile = $state<FileList | null>(null);
 	let importing = $state(false);
+	let avatarFile = $state<FileList | null>(null);
+	// Force le rechargement de l'image après un envoi (l'URL ne change pas sinon)
+	let avatarBump = $state(0);
+
+	/**
+	 * Image réduite côté navigateur avant l'envoi : l'avatar est affiché en ~64 px,
+	 * inutile d'envoyer une photo de plusieurs Mo (et le serveur Node limite la
+	 * taille des requêtes, BODY_SIZE_LIMIT). Recadrée carrée, 256 px, JPEG.
+	 */
+	let avatarResized = $state<Blob | null>(null);
+	const AVATAR_SIZE = 256;
+
+	async function prepareAvatar() {
+		avatarResized = null;
+		const file = avatarFile?.[0];
+		if (!file) return;
+		try {
+			const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+			const side = Math.min(bitmap.width, bitmap.height);
+			const canvas = document.createElement('canvas');
+			canvas.width = canvas.height = Math.min(AVATAR_SIZE, side);
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return;
+			ctx.drawImage(
+				bitmap,
+				(bitmap.width - side) / 2,
+				(bitmap.height - side) / 2,
+				side,
+				side,
+				0,
+				0,
+				canvas.width,
+				canvas.height
+			);
+			bitmap.close();
+			avatarResized = await new Promise<Blob | null>((resolve) =>
+				canvas.toBlob(resolve, 'image/jpeg', 0.85)
+			);
+		} catch {
+			// Format que le navigateur ne sait pas décoder : le fichier partira tel quel,
+			// les contrôles serveur (type, 2 Mo max) s'appliquent
+		}
+	}
 
 	const maxMonth = $derived(Math.max(1, ...data.months.map((m) => m.count)));
 	const maxGenre = $derived(Math.max(1, ...data.perGenre.map((g) => g.minutes)));
@@ -30,12 +73,15 @@
 </svelte:head>
 
 <div class="mb-4 flex items-center justify-between">
-	<h1 class="text-2xl font-bold">Profil</h1>
-	{#if data.authEnabled}
-		<form method="POST" action="?/logout" use:enhance>
-			<button class="text-sm text-mut hover:text-ink">Se déconnecter</button>
-		</form>
-	{/if}
+	<h1 class="text-2xl font-bold">{data.profileName}</h1>
+	<div class="flex items-center gap-4">
+		<a href="/profils" class="text-sm text-mut hover:text-ink">Changer de profil</a>
+		{#if data.authEnabled}
+			<form method="POST" action="?/logout" use:enhance>
+				<button class="text-sm text-mut hover:text-ink">Se déconnecter</button>
+			</form>
+		{/if}
+	</div>
 </div>
 
 <section class="rounded-2xl bg-card p-5 text-center">
@@ -105,6 +151,102 @@
 		</div>
 	</section>
 {/if}
+
+<section class="mt-6">
+	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Profil</h2>
+	<div class="space-y-4 rounded-2xl bg-card p-4">
+		<form method="POST" action="?/rename" use:enhance class="flex flex-wrap items-center gap-2">
+			<input
+				type="text"
+				name="name"
+				value={data.profileName}
+				maxlength="30"
+				autocomplete="off"
+				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+			/>
+			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
+				Renommer
+			</button>
+		</form>
+		<form
+			method="POST"
+			action="?/avatar"
+			enctype="multipart/form-data"
+			use:enhance={({ formData }) => {
+				if (avatarResized) formData.set('avatar', avatarResized, 'avatar.jpg');
+				return async ({ update }) => {
+					await update();
+					avatarBump++;
+					avatarFile = null;
+					avatarResized = null;
+				};
+			}}
+			class="flex flex-wrap items-center gap-3"
+		>
+			{#if data.hasAvatar}
+				<img
+					src="/profils/{data.profileId}/avatar?v={avatarBump}"
+					alt=""
+					class="h-14 w-14 shrink-0 rounded-full object-cover"
+				/>
+			{:else}
+				<span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-line/60 text-xl font-bold">
+					{data.profileName.trim().charAt(0).toUpperCase()}
+				</span>
+			{/if}
+			<input
+				type="file"
+				name="avatar"
+				accept="image/png,image/jpeg,image/webp,image/gif"
+				bind:files={avatarFile}
+				onchange={prepareAvatar}
+				class="max-w-full min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+			/>
+			<button
+				disabled={!avatarFile?.length}
+				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
+			>
+				Enregistrer l'image
+			</button>
+			{#if data.hasAvatar}
+				<button
+					formaction="?/removeAvatar"
+					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+				>
+					Retirer
+				</button>
+			{/if}
+		</form>
+		<form method="POST" action="?/setPassword" use:enhance class="flex flex-wrap items-center gap-2">
+			<input
+				type="password"
+				name="password"
+				placeholder={data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
+				autocomplete="new-password"
+				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+			/>
+			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
+				{data.hasPassword ? 'Changer' : 'Définir'}
+			</button>
+			{#if data.hasPassword}
+				<button
+					formaction="?/clearPassword"
+					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+				>
+					Retirer le mot de passe
+				</button>
+			{/if}
+		</form>
+		<p class="text-xs text-mut">
+			Sans mot de passe, le profil s'ouvre d'un clic sur l'écran des profils.
+		</p>
+		{#if form?.profileError}
+			<p class="text-sm text-red-400">{form.profileError}</p>
+		{:else if form?.profileOk}
+			<p class="text-sm text-ok">✓ {form.profileOk}</p>
+		{/if}
+	</div>
+</section>
 
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Données</h2>

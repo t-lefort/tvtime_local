@@ -1,9 +1,10 @@
 import { error, redirect } from '@sveltejs/kit';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { shows, watches } from '$lib/server/db/schema';
+import { shows, userShows, watches } from '$lib/server/db/schema';
 import { getEpisodesWithWatch, getShowsWithProgress, type EpisodeWithWatch } from '$lib/server/queries';
-import { addOrUpdateShow } from '$lib/server/shows';
+import { addOrUpdateShow, followShow, getUserShow, unfollowShow } from '$lib/server/shows';
+import { requireUser } from '$lib/server/users';
 import {
 	extractCast,
 	extractProviders,
@@ -20,19 +21,22 @@ function tmdbIdFromParam(value: string): number {
 	return tmdbId;
 }
 
-function requireLocalShow(tmdbId: number) {
+/** Série présente dans la bibliothèque du profil (suivie), sinon 404. */
+function requireFollowedShow(userId: number, tmdbId: number) {
 	const show = db.select().from(shows).where(eq(shows.tmdbId, tmdbId)).get();
-	if (!show) error(404, 'Série introuvable');
-	return show;
+	const userShow = show ? getUserShow(userId, show.id) : undefined;
+	if (!show || !userShow) error(404, 'Série introuvable');
+	return { show, userShow };
 }
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
+	const user = requireUser(locals);
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=series&q=${encodeURIComponent(q)}` : '/series';
 	const today = new Date().toISOString().slice(0, 10);
 
-	const local = getShowsWithProgress({ tmdbId })[0];
+	const local = getShowsWithProgress(user.id, { tmdbId })[0];
 	if (local) {
 		// Complète la distribution en direct pour les séries ajoutées avant cette fonctionnalité
 		let cast = JSON.parse(local.cast ?? '[]') as StoredCastMember[];
@@ -44,7 +48,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		}
 
 		const bySeason = new Map<number, EpisodeWithWatch[]>();
-		for (const ep of getEpisodesWithWatch(local.id)) {
+		for (const ep of getEpisodesWithWatch(user.id, local.id)) {
 			const list = bySeason.get(ep.seasonNumber) ?? [];
 			list.push(ep);
 			bySeason.set(ep.seasonNumber, list);
@@ -130,69 +134,85 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 export const actions: Actions = {
 	/** Suit la série (reste sur la même page, qui repasse en mode bibliothèque). */
-	add: async ({ params }) => {
-		await addOrUpdateShow(tmdbIdFromParam(params.tmdbId));
+	add: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const show = await addOrUpdateShow(tmdbIdFromParam(params.tmdbId));
+		followShow(user.id, show.id);
 	},
 
-	toggle: async ({ params, request }) => {
-		requireLocalShow(tmdbIdFromParam(params.tmdbId));
+	toggle: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId));
 		const episodeId = Number((await request.formData()).get('episodeId'));
 		if (!episodeId) return;
-		const existing = db.select().from(watches).where(eq(watches.episodeId, episodeId)).all();
+		const mine = and(eq(watches.episodeId, episodeId), eq(watches.userId, user.id));
+		const existing = db.select().from(watches).where(mine).all();
 		if (existing.length > 0) {
-			db.delete(watches).where(eq(watches.episodeId, episodeId)).run();
+			db.delete(watches).where(mine).run();
 		} else {
-			db.insert(watches).values({ episodeId }).run();
+			db.insert(watches).values({ userId: user.id, episodeId }).run();
 		}
 	},
 
-	season: async ({ params, request }) => {
-		const id = requireLocalShow(tmdbIdFromParam(params.tmdbId)).id;
+	season: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const id = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId)).show.id;
 		const seasonNumber = Number((await request.formData()).get('seasonNumber'));
 		db.run(sql`
-			INSERT INTO watches (episode_id)
-			SELECT e.id FROM episodes e
+			INSERT INTO watches (user_id, episode_id)
+			SELECT ${user.id}, e.id FROM episodes e
 			WHERE e.show_id = ${id} AND e.season_number = ${seasonNumber}
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')
-				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id)
+				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id AND w.user_id = ${user.id})
 		`);
 	},
 
-	until: async ({ params, request }) => {
-		const id = requireLocalShow(tmdbIdFromParam(params.tmdbId)).id;
+	until: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const id = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId)).show.id;
 		const data = await request.formData();
 		const seasonNumber = Number(data.get('seasonNumber'));
 		const episodeNumber = Number(data.get('episodeNumber'));
 		db.run(sql`
-			INSERT INTO watches (episode_id)
-			SELECT e.id FROM episodes e
+			INSERT INTO watches (user_id, episode_id)
+			SELECT ${user.id}, e.id FROM episodes e
 			WHERE e.show_id = ${id} AND e.season_number > 0
 				AND (e.season_number < ${seasonNumber}
 					OR (e.season_number = ${seasonNumber} AND e.episode_number <= ${episodeNumber}))
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')
-				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id)
+				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id AND w.user_id = ${user.id})
 		`);
 	},
 
-	archive: async ({ params }) => {
-		const show = requireLocalShow(tmdbIdFromParam(params.tmdbId));
-		db.update(shows).set({ archived: !show.archived }).where(eq(shows.id, show.id)).run();
+	archive: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { userShow } = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId));
+		db.update(userShows)
+			.set({ archived: !userShow.archived })
+			.where(eq(userShows.id, userShow.id))
+			.run();
 	},
 
-	favorite: async ({ params }) => {
-		const show = requireLocalShow(tmdbIdFromParam(params.tmdbId));
-		db.update(shows).set({ favorite: !show.favorite }).where(eq(shows.id, show.id)).run();
+	favorite: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { userShow } = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId));
+		db.update(userShows)
+			.set({ favorite: !userShow.favorite })
+			.where(eq(userShows.id, userShow.id))
+			.run();
 	},
 
-	refresh: async ({ params }) => {
+	refresh: async ({ params, locals }) => {
+		const user = requireUser(locals);
 		const tmdbId = tmdbIdFromParam(params.tmdbId);
-		requireLocalShow(tmdbId);
+		requireFollowedShow(user.id, tmdbId);
 		await addOrUpdateShow(tmdbId);
 	},
 
-	unfollow: async ({ params }) => {
-		const show = requireLocalShow(tmdbIdFromParam(params.tmdbId));
-		db.delete(shows).where(eq(shows.id, show.id)).run();
+	unfollow: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { show } = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId));
+		unfollowShow(user.id, show.id);
 		redirect(303, '/series');
 	}
 };

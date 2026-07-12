@@ -1,10 +1,13 @@
 import { error } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { movies } from '$lib/server/db/schema';
+import { movies, userMovies } from '$lib/server/db/schema';
+import { requireUser } from '$lib/server/users';
 import { getCompanyDetails, getCompanyMovies, TmdbError } from '$lib/server/tmdb';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	const user = requireUser(locals);
 	const companyId = Number(params.id);
 	if (!Number.isInteger(companyId) || companyId <= 0) error(404, 'Société introuvable');
 
@@ -20,7 +23,13 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	const movieIds = new Map(
-		db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies).all().map((r) => [r.tmdbId, r.id])
+		db
+			.select({ tmdbId: movies.tmdbId, id: movies.id })
+			.from(movies)
+			.innerJoin(userMovies, eq(userMovies.movieId, movies.id))
+			.where(eq(userMovies.userId, user.id))
+			.all()
+			.map((r) => [r.tmdbId, r.id])
 	);
 
 	return {

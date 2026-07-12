@@ -1,9 +1,10 @@
 import { getMoviesWithWatch } from '$lib/server/queries';
+import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ url }) => {
+export const load: PageServerLoad = ({ url, locals }) => {
 	const filter = url.searchParams.get('filtre') ?? 'tous';
-	const all = getMoviesWithWatch();
+	const all = getMoviesWithWatch(requireUser(locals).id);
 
 	const counts = {
 		tous: all.length,

@@ -1,9 +1,10 @@
 import { error, redirect } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { movies, movieWatches } from '$lib/server/db/schema';
+import { movies, movieWatches, userMovies } from '$lib/server/db/schema';
 import { getMoviesWithWatch } from '$lib/server/queries';
-import { addOrUpdateMovie } from '$lib/server/movies';
+import { addOrUpdateMovie, collectMovie, getUserMovie, uncollectMovie } from '$lib/server/movies';
+import { requireUser } from '$lib/server/users';
 import {
 	extractCast,
 	extractCompanies,
@@ -23,18 +24,21 @@ function tmdbIdFromParam(value: string): number {
 	return tmdbId;
 }
 
-function requireLocalMovie(tmdbId: number) {
+/** Film présent dans la collection du profil, sinon 404. */
+function requireCollectedMovie(userId: number, tmdbId: number) {
 	const movie = db.select().from(movies).where(eq(movies.tmdbId, tmdbId)).get();
-	if (!movie) error(404, 'Film introuvable');
-	return movie;
+	const userMovie = movie ? getUserMovie(userId, movie.id) : undefined;
+	if (!movie || !userMovie) error(404, 'Film introuvable');
+	return { movie, userMovie };
 }
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
+	const user = requireUser(locals);
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=films&q=${encodeURIComponent(q)}` : '/films';
 
-	const local = getMoviesWithWatch({ tmdbId })[0];
+	const local = getMoviesWithWatch(user.id, { tmdbId })[0];
 	if (local) {
 		// Complète distribution, équipe et sociétés en direct pour les films ajoutés avant ces fonctionnalités
 		let cast = JSON.parse(local.cast ?? '[]') as StoredCastMember[];
@@ -106,42 +110,53 @@ export const load: PageServerLoad = async ({ params, url }) => {
 };
 
 export const actions: Actions = {
-	/** Ajoute le film à la bibliothèque (reste sur la même page, qui repasse en mode bibliothèque). */
-	add: async ({ params }) => {
-		await addOrUpdateMovie(tmdbIdFromParam(params.tmdbId));
+	/** Ajoute le film à la collection du profil (reste sur la même page, qui repasse en mode bibliothèque). */
+	add: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const movie = await addOrUpdateMovie(tmdbIdFromParam(params.tmdbId));
+		collectMovie(user.id, movie.id);
 	},
 
-	/** Marque vu (aujourd'hui) ou efface tout l'historique si déjà vu. */
-	toggle: async ({ params }) => {
-		const movie = requireLocalMovie(tmdbIdFromParam(params.tmdbId));
-		const existing = db.select().from(movieWatches).where(eq(movieWatches.movieId, movie.id)).all();
+	/** Marque vu (aujourd'hui) ou efface tout l'historique du profil si déjà vu. */
+	toggle: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { movie } = requireCollectedMovie(user.id, tmdbIdFromParam(params.tmdbId));
+		const mine = and(eq(movieWatches.movieId, movie.id), eq(movieWatches.userId, user.id));
+		const existing = db.select().from(movieWatches).where(mine).all();
 		if (existing.length > 0) {
-			db.delete(movieWatches).where(eq(movieWatches.movieId, movie.id)).run();
+			db.delete(movieWatches).where(mine).run();
 		} else {
-			db.insert(movieWatches).values({ movieId: movie.id }).run();
+			db.insert(movieWatches).values({ userId: user.id, movieId: movie.id }).run();
 		}
 	},
 
 	/** Ajoute un visionnage supplémentaire (revisionnage). */
-	rewatch: async ({ params }) => {
-		const movie = requireLocalMovie(tmdbIdFromParam(params.tmdbId));
-		db.insert(movieWatches).values({ movieId: movie.id }).run();
+	rewatch: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { movie } = requireCollectedMovie(user.id, tmdbIdFromParam(params.tmdbId));
+		db.insert(movieWatches).values({ userId: user.id, movieId: movie.id }).run();
 	},
 
-	favorite: async ({ params }) => {
-		const movie = requireLocalMovie(tmdbIdFromParam(params.tmdbId));
-		db.update(movies).set({ favorite: !movie.favorite }).where(eq(movies.id, movie.id)).run();
+	favorite: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { userMovie } = requireCollectedMovie(user.id, tmdbIdFromParam(params.tmdbId));
+		db.update(userMovies)
+			.set({ favorite: !userMovie.favorite })
+			.where(eq(userMovies.id, userMovie.id))
+			.run();
 	},
 
-	refresh: async ({ params }) => {
+	refresh: async ({ params, locals }) => {
+		const user = requireUser(locals);
 		const tmdbId = tmdbIdFromParam(params.tmdbId);
-		requireLocalMovie(tmdbId);
+		requireCollectedMovie(user.id, tmdbId);
 		await addOrUpdateMovie(tmdbId);
 	},
 
-	remove: async ({ params }) => {
-		const movie = requireLocalMovie(tmdbIdFromParam(params.tmdbId));
-		db.delete(movies).where(eq(movies.id, movie.id)).run();
+	remove: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const { movie } = requireCollectedMovie(user.id, tmdbIdFromParam(params.tmdbId));
+		uncollectMovie(user.id, movie.id);
 		redirect(303, '/films');
 	}
 };

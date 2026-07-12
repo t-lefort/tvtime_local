@@ -1,4 +1,5 @@
 import { getShowsWithProgress, type ShowState } from '$lib/server/queries';
+import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
 
 const FILTERS: Record<string, ShowState | null> = {
@@ -10,9 +11,9 @@ const FILTERS: Record<string, ShowState | null> = {
 	pascommencees: 'notstarted'
 };
 
-export const load: PageServerLoad = ({ url }) => {
+export const load: PageServerLoad = ({ url, locals }) => {
 	const filter = url.searchParams.get('filtre') ?? 'toutes';
-	const all = getShowsWithProgress();
+	const all = getShowsWithProgress(requireUser(locals).id);
 
 	const counts: Record<string, number> = { toutes: all.length };
 	for (const [key, state] of Object.entries(FILTERS)) {

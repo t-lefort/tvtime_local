@@ -6,10 +6,23 @@ import Database from 'better-sqlite3';
 import { authEnabled } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import { getProfileStats } from '$lib/server/queries';
+import {
+	getUserById,
+	getUserByName,
+	profileCookieValue,
+	renameUser,
+	requireUser,
+	setUserAvatar,
+	setUserPassword,
+	USER_COOKIE,
+	USER_COOKIE_OPTS
+} from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = () => {
-	const stats = getProfileStats();
+export const load: PageServerLoad = ({ locals }) => {
+	const user = requireUser(locals);
+	const account = getUserById(user.id);
+	const stats = getProfileStats(user.id);
 
 	// 24 derniers mois, mois vides inclus
 	const byMonth = new Map(stats.perMonth.map((m) => [m.month, m.count]));
@@ -22,6 +35,10 @@ export const load: PageServerLoad = () => {
 	}
 
 	return {
+		profileId: user.id,
+		profileName: user.name,
+		hasPassword: Boolean(account?.passwordHash),
+		hasAvatar: Boolean(account?.avatar),
 		totalMinutes: stats.totalMinutes,
 		seriesMinutes: stats.seriesMinutes,
 		movieMinutes: stats.movieMinutes,
@@ -55,12 +72,66 @@ export const actions: Actions = {
 		redirect(303, '/login');
 	},
 
+	rename: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const name = String((await request.formData()).get('name') ?? '').trim();
+		if (!name) return fail(400, { profileError: 'Donnez un nom au profil.' });
+		if (name.length > 30) return fail(400, { profileError: 'Nom trop long (30 caractères max).' });
+		const existing = getUserByName(name);
+		if (existing && existing.id !== user.id) {
+			return fail(400, { profileError: 'Ce nom de profil existe déjà.' });
+		}
+		renameUser(user.id, name);
+		return { profileOk: 'Profil renommé.' };
+	},
+
+	/** Définit ou change le mot de passe du profil actif (et re-signe son cookie). */
+	setPassword: async ({ request, cookies, locals }) => {
+		const user = requireUser(locals);
+		const password = String((await request.formData()).get('password') ?? '');
+		if (password.length < 4) {
+			return fail(400, { profileError: 'Mot de passe : 4 caractères minimum.' });
+		}
+		setUserPassword(user.id, password);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe défini.' };
+	},
+
+	clearPassword: async ({ cookies, locals }) => {
+		const user = requireUser(locals);
+		setUserPassword(user.id, null);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe retiré.' };
+	},
+
+	avatar: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const file = (await request.formData()).get('avatar');
+		if (!(file instanceof File) || file.size === 0) {
+			return fail(400, { profileError: 'Choisissez une image.' });
+		}
+		if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+			return fail(400, { profileError: 'Format accepté : PNG, JPEG, WebP ou GIF.' });
+		}
+		if (file.size > 2 * 1024 * 1024) {
+			return fail(400, { profileError: 'Image trop lourde (2 Mo max).' });
+		}
+		setUserAvatar(user.id, Buffer.from(await file.arrayBuffer()), file.type);
+		return { profileOk: 'Image mise à jour.' };
+	},
+
+	removeAvatar: async ({ locals }) => {
+		const user = requireUser(locals);
+		setUserAvatar(user.id, null, null);
+		return { profileOk: 'Image retirée.' };
+	},
+
 	/**
 	 * Remplace toutes les données par celles d'une base exportée depuis l'app.
 	 * On copie les tables via ATTACH plutôt que de remplacer le fichier : pas de
 	 * problème de fichier ouvert, et la transaction garantit tout-ou-rien.
 	 */
-	import: async ({ request }) => {
+	import: async ({ request, locals }) => {
 		const file = (await request.formData()).get('db');
 		if (!(file instanceof File) || file.size === 0) {
 			return fail(400, { error: 'Choisissez un fichier .db exporté depuis l’application.' });
@@ -95,7 +166,16 @@ export const actions: Actions = {
 			try {
 				// Parents d'abord pour l'insertion ; copie par intersection de colonnes pour
 				// accepter les exports d'anciennes versions (sans films ni watch_providers)
-				const TABLES = ['shows', 'episodes', 'watches', 'movies', 'movie_watches'];
+				const TABLES = [
+					'users',
+					'shows',
+					'episodes',
+					'movies',
+					'user_shows',
+					'user_movies',
+					'watches',
+					'movie_watches'
+				];
 				const srcTables = new Set(
 					raw
 						.prepare(`SELECT name FROM src.sqlite_master WHERE type = 'table'`)
@@ -107,18 +187,47 @@ export const actions: Actions = {
 						.prepare(`SELECT name FROM pragma_table_info(?, ?)`)
 						.all(t, schema)
 						.map((r) => (r as { name: string }).name);
+				// Export d'une version mono-utilisateur : tout est rattaché à un profil par défaut
+				const legacy = !srcTables.has('users');
 
 				raw.exec('BEGIN');
 				try {
 					for (const t of [...TABLES].reverse()) raw.exec(`DELETE FROM ${t}`);
+					if (legacy) raw.exec(`INSERT INTO users (id, name) VALUES (1, 'Profil 1')`);
 					for (const t of TABLES) {
 						if (!srcTables.has(t)) continue;
 						const srcCols = new Set(columnsOf('src', t));
-						const cols = columnsOf('main', t)
-							.filter((c) => srcCols.has(c))
-							.map((c) => `"${c}"`)
-							.join(', ');
-						raw.exec(`INSERT INTO ${t} (${cols}) SELECT ${cols} FROM src."${t}"`);
+						const common = columnsOf('main', t).filter((c) => srcCols.has(c));
+						let insertCols = common.map((c) => `"${c}"`).join(', ');
+						let selectCols = insertCols;
+						// Anciennes tables watches/movie_watches sans user_id → profil par défaut
+						if (legacy && !srcCols.has('user_id') && columnsOf('main', t).includes('user_id')) {
+							insertCols = `user_id, ${insertCols}`;
+							selectCols = `1, ${selectCols}`;
+						}
+						raw.exec(`INSERT INTO ${t} (${insertCols}) SELECT ${selectCols} FROM src."${t}"`);
+					}
+					if (legacy) {
+						// Suivi/collection déplacés depuis les colonnes des anciennes tables catalogue
+						const showCols = new Set(columnsOf('src', 'shows'));
+						raw.exec(`
+							INSERT INTO user_shows (user_id, show_id, followed_at, archived, favorite)
+							SELECT 1, id,
+								${showCols.has('followed_at') ? 'followed_at' : `datetime('now')`},
+								${showCols.has('archived') ? 'archived' : '0'},
+								${showCols.has('favorite') ? 'favorite' : '0'}
+							FROM src.shows
+						`);
+						if (srcTables.has('movies')) {
+							const movieCols = new Set(columnsOf('src', 'movies'));
+							raw.exec(`
+								INSERT INTO user_movies (user_id, movie_id, added_at, favorite)
+								SELECT 1, id,
+									${movieCols.has('added_at') ? 'added_at' : `datetime('now')`},
+									${movieCols.has('favorite') ? 'favorite' : '0'}
+								FROM src.movies
+							`);
+						}
 					}
 					raw.exec('COMMIT');
 				} catch (e) {
@@ -129,6 +238,11 @@ export const actions: Actions = {
 				}
 			} finally {
 				raw.exec('DETACH DATABASE src');
+			}
+
+			// Le profil courant peut avoir disparu avec les données importées
+			if (!locals.user || !raw.prepare('SELECT 1 FROM users WHERE id = ?').get(locals.user.id)) {
+				redirect(303, '/profils');
 			}
 
 			const count = (t: string) =>

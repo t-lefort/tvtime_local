@@ -8,6 +8,7 @@ Self-hosted web app for tracking TV shows **and movies**, designed as a minimali
 - **Movies**: collection with filters (to watch, watched, favorites), mark watched/unwatched, rewatches, favorite
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **Search**: add shows and movies via TMDB (French metadata)
+- **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page); `AUTH_PASSWORD` still protects the whole instance
 - **Profile**: total screen time (shows + movies), watch counts per month, genre breakdown, ranking of watched shows
 
 Shows still in production are refreshed automatically every night (new seasons, air dates), along with the streaming platforms of the whole library. Installable as a PWA on mobile.
@@ -23,10 +24,10 @@ With Node installed (one-time, ~2 min):
 
 ```sh
 npm install
-npm run import -- "C:\path\to\gdpr-data"
+npm run import -- "C:\path\to\gdpr-data" "Profile name"
 ```
 
-The script imports followed shows (including their "stopped" status), movies to watch, the full watch history for shows + movies with actual dates, and show favorites. It prints a final report (shows/movies not found on TMDB, total time compared against the TV Time reference). It can be re-run without creating duplicates if interrupted.
+The data is attached to the given profile (created if needed; defaults to `Profil 1`). The script imports followed shows (including their "stopped" status), movies to watch, the full watch history for shows + movies with actual dates, and show favorites. It prints a final report (shows/movies not found on TMDB, total time compared against the TV Time reference). It can be re-run without creating duplicates if interrupted.
 
 ## Running
 
@@ -58,6 +59,7 @@ docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
 | `TMDB_API_KEY` | TMDB API key (required) |
 | `AUTH_PASSWORD` | Login password; empty = no authentication (LAN use) |
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
+| `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
 
 ## Deploying to a server (CI + Portainer)
