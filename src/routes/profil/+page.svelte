@@ -217,29 +217,19 @@
 				</button>
 			{/if}
 		</form>
-		<form method="POST" action="?/setPassword" use:enhance class="flex flex-wrap items-center gap-2">
-			<input
-				type="password"
-				name="password"
-				placeholder={data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
-				autocomplete="new-password"
-				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			/>
-			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
-				{data.hasPassword ? 'Changer' : 'Définir'}
-			</button>
-			{#if data.hasPassword}
-				<button
-					formaction="?/clearPassword"
-					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
-				>
-					Retirer le mot de passe
-				</button>
-			{/if}
-		</form>
-		<p class="text-xs text-mut">
-			Sans mot de passe, le profil s'ouvre d'un clic sur l'écran des profils.
-		</p>
+		<div class="flex flex-wrap items-center gap-2">
+			<a
+				href="/profil/mot-de-passe"
+				class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+			>
+				🔒 Mot de passe…
+			</a>
+			<span class="text-xs text-mut">
+				{data.hasPassword
+					? 'Profil protégé : demandé sur l\'écran des profils.'
+					: 'Aucun : le profil s\'ouvre d\'un clic.'}
+			</span>
+		</div>
 		{#if form?.profileError}
 			<p class="text-sm text-red-400">{form.profileError}</p>
 		{:else if form?.profileOk}
