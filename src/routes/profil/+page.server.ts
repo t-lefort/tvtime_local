@@ -9,9 +9,13 @@ import { getProfileStats } from '$lib/server/queries';
 import {
 	getUserById,
 	getUserByName,
+	profileCookieValue,
 	renameUser,
 	requireUser,
-	setUserAvatar
+	setUserAvatar,
+	setUserPassword,
+	USER_COOKIE,
+	USER_COOKIE_OPTS
 } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -79,6 +83,25 @@ export const actions: Actions = {
 		}
 		renameUser(user.id, name);
 		return { profileOk: 'Profil renommé.' };
+	},
+
+	/** Définit ou change le mot de passe du profil actif (et re-signe son cookie). */
+	setPassword: async ({ request, cookies, locals }) => {
+		const user = requireUser(locals);
+		const password = String((await request.formData()).get('password') ?? '');
+		if (password.length < 4) {
+			return fail(400, { profileError: 'Mot de passe : 4 caractères minimum.' });
+		}
+		setUserPassword(user.id, password);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe défini.' };
+	},
+
+	clearPassword: async ({ cookies, locals }) => {
+		const user = requireUser(locals);
+		setUserPassword(user.id, null);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe retiré.' };
 	},
 
 	avatar: async ({ request, locals }) => {
