@@ -44,9 +44,12 @@
 	<p class="mb-1 text-center text-3xl">📺</p>
 	<h1 class="mb-8 text-center text-2xl font-bold">Qui regarde ?</h1>
 
-	{#if data.users.length}
-		<ul class="mb-8 flex max-w-lg flex-wrap justify-center gap-4">
-			{#each data.users as user (user.id)}
+	{#if !data.users.length}
+		<p class="mb-6 text-sm text-mut">Créez un premier profil pour commencer.</p>
+	{/if}
+
+	<ul class="flex max-w-lg flex-wrap justify-center gap-4">
+		{#each data.users as user (user.id)}
 				<li class="relative flex w-32 flex-col items-center">
 					{#if user.hasPassword}
 						<!-- Profil protégé : page de connexion dédiée -->
@@ -111,37 +114,18 @@
 					{/if}
 				</li>
 			{/each}
-		</ul>
-	{:else}
-		<p class="mb-6 text-sm text-mut">Créez un premier profil pour commencer.</p>
-	{/if}
-
-	<form method="POST" action="?/create" use:enhance class="flex w-full max-w-sm flex-col gap-2">
-		<div class="flex gap-2">
-			<input
-				type="text"
-				name="name"
-				placeholder="Nouveau profil"
-				maxlength="30"
-				autocomplete="off"
-				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			/>
-			<button class="shrink-0 rounded-xl bg-brand px-4 py-3 font-semibold text-brand-ink hover:opacity-90">
-				Créer
-			</button>
-		</div>
-		<input
-			type="password"
-			name="password"
-			placeholder="Mot de passe (optionnel)"
-			autocomplete="new-password"
-			class="w-full rounded-xl border border-line bg-bg px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-		/>
-	</form>
-
-	{#if form && form.error && !('userId' in form)}
-		<p class="mt-3 text-sm text-red-400">{form.error}</p>
-	{/if}
+			<li class="flex w-32 flex-col items-center">
+				<a href="/profils/nouveau" class={cardClass}>
+					<span
+						class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-line text-3xl text-mut transition-colors group-hover:border-mut group-hover:text-ink"
+					>
+						+
+					</span>
+					<span class="text-sm font-semibold">Nouveau profil</span>
+					<span class="text-[11px] text-mut">&nbsp;</span>
+				</a>
+			</li>
+	</ul>
 
 	{#if data.users.length}
 		<button

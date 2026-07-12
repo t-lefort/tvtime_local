@@ -3,10 +3,8 @@ import { sql } from 'drizzle-orm';
 import { verifyPassword } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import {
-	createUser,
 	deleteUser,
 	getUserById,
-	getUserByName,
 	listUsers,
 	profileCookieValue,
 	USER_COOKIE,
@@ -46,18 +44,6 @@ export const actions: Actions = {
 		if (!user) return fail(400, { error: 'Profil introuvable.', userId: id });
 		// Profil protégé : la connexion se fait sur sa page dédiée
 		if (user.passwordHash) redirect(303, `/profils/${user.id}/connexion`);
-		cookies.set(USER_COOKIE, profileCookieValue(user), USER_COOKIE_OPTS);
-		redirect(303, '/');
-	},
-
-	create: async ({ request, cookies }) => {
-		const data = await request.formData();
-		const name = String(data.get('name') ?? '').trim();
-		const password = String(data.get('password') ?? '');
-		if (!name) return fail(400, { error: 'Donnez un nom au profil.' });
-		if (name.length > 30) return fail(400, { error: 'Nom trop long (30 caractères max).' });
-		if (getUserByName(name)) return fail(400, { error: 'Ce nom de profil existe déjà.' });
-		const user = createUser(name, password || undefined);
 		cookies.set(USER_COOKIE, profileCookieValue(user), USER_COOKIE_OPTS);
 		redirect(303, '/');
 	},
