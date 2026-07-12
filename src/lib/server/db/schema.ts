@@ -1,10 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // Profils : chaque personne utilisant l'instance a sa bibliothèque et son historique
 export const users = sqliteTable('users', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull().unique(),
+	// Mot de passe optionnel (« sel:hash » scrypt) ; null = connexion directe
+	passwordHash: text('password_hash'),
+	// Image de profil (petite, servie par /profils/[id]/avatar) et son type MIME
+	avatar: blob('avatar', { mode: 'buffer' }),
+	avatarType: text('avatar_type'),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(datetime('now'))`)

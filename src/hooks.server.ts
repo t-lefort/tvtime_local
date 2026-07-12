@@ -20,8 +20,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Résolution du profil actif (multi-utilisateurs) ; /profils permet d'en choisir un
 	if (event.url.pathname !== '/login') {
 		const { USER_COOKIE, userFromCookie } = await import('$lib/server/users');
-		event.locals.user = userFromCookie(event.cookies.get(USER_COOKIE)) ?? null;
-		if (!event.locals.user && event.url.pathname !== '/profils') {
+		const user = userFromCookie(event.cookies.get(USER_COOKIE));
+		// Champs sensibles (hash, image) volontairement absents des locals
+		event.locals.user = user ? { id: user.id, name: user.name } : null;
+		if (!event.locals.user && !event.url.pathname.startsWith('/profils')) {
 			redirect(303, '/profils');
 		}
 	} else {

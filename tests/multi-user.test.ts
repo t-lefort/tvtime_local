@@ -56,7 +56,17 @@ const { getMoviesWithWatch, getProfileStats, getShowsWithProgress, getWatchNext 
 );
 const { followShow, unfollowShow } = await import('../src/lib/server/shows');
 const { uncollectMovie } = await import('../src/lib/server/movies');
-const { createUser, deleteUser, listUsers } = await import('../src/lib/server/users');
+const {
+	createUser,
+	deleteUser,
+	getUserById,
+	listUsers,
+	profileCookieValue,
+	setUserAvatar,
+	setUserPassword,
+	userFromCookie
+} = await import('../src/lib/server/users');
+const { hashPassword, verifyPassword } = await import('../src/lib/server/auth');
 
 test('la migration rattache les données existantes à un profil par défaut', () => {
 	const users = listUsers();
@@ -121,6 +131,43 @@ test('chaque profil a sa bibliothèque et son historique', () => {
 
 	deleteUser(bob.id);
 	assert.equal(listUsers().length, 1);
+});
+
+test('mot de passe de profil : vérification et cookie signé', () => {
+	assert.ok(verifyPassword('secret', hashPassword('secret')));
+	assert.ok(!verifyPassword('faux', hashPassword('secret')));
+
+	const alice = createUser('Alice', 'secret');
+	assert.ok(alice.passwordHash);
+	// Un cookie non signé (id nu) ne suffit pas pour un profil protégé
+	assert.equal(userFromCookie(String(alice.id)), undefined);
+	const cookie = profileCookieValue(alice);
+	assert.equal(userFromCookie(cookie)?.id, alice.id);
+
+	// Changer le mot de passe invalide les cookies existants
+	setUserPassword(alice.id, 'autre');
+	assert.equal(userFromCookie(cookie), undefined);
+	assert.equal(userFromCookie(profileCookieValue(getUserById(alice.id)!))?.id, alice.id);
+
+	// Retirer le mot de passe → connexion directe (id nu)
+	setUserPassword(alice.id, null);
+	assert.equal(userFromCookie(String(alice.id))?.id, alice.id);
+
+	deleteUser(alice.id);
+});
+
+test("l'image de profil est stockée et retirable", () => {
+	const carol = createUser('Carol');
+	setUserAvatar(carol.id, Buffer.from([1, 2, 3]), 'image/png');
+	let stored = getUserById(carol.id);
+	assert.equal(stored?.avatarType, 'image/png');
+	assert.deepEqual([...(stored?.avatar ?? [])], [1, 2, 3]);
+
+	setUserAvatar(carol.id, null, null);
+	stored = getUserById(carol.id);
+	assert.equal(stored?.avatar, null);
+	assert.equal(stored?.avatarType, null);
+	deleteUser(carol.id);
 });
 
 test('le catalogue est nettoyé quand plus aucun profil ne référence une fiche', () => {

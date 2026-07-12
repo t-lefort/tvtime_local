@@ -6,11 +6,20 @@ import Database from 'better-sqlite3';
 import { authEnabled } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import { getProfileStats } from '$lib/server/queries';
-import { requireUser } from '$lib/server/users';
+import {
+	getUserById,
+	profileCookieValue,
+	requireUser,
+	setUserAvatar,
+	setUserPassword,
+	USER_COOKIE,
+	USER_COOKIE_OPTS
+} from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
 	const user = requireUser(locals);
+	const account = getUserById(user.id);
 	const stats = getProfileStats(user.id);
 
 	// 24 derniers mois, mois vides inclus
@@ -24,7 +33,10 @@ export const load: PageServerLoad = ({ locals }) => {
 	}
 
 	return {
+		profileId: user.id,
 		profileName: user.name,
+		hasPassword: Boolean(account?.passwordHash),
+		hasAvatar: Boolean(account?.avatar),
 		totalMinutes: stats.totalMinutes,
 		seriesMinutes: stats.seriesMinutes,
 		movieMinutes: stats.movieMinutes,
@@ -56,6 +68,47 @@ export const actions: Actions = {
 	logout: async ({ cookies }) => {
 		cookies.delete('session', { path: '/' });
 		redirect(303, '/login');
+	},
+
+	/** Définit ou change le mot de passe du profil actif (et re-signe son cookie). */
+	setPassword: async ({ request, cookies, locals }) => {
+		const user = requireUser(locals);
+		const password = String((await request.formData()).get('password') ?? '');
+		if (password.length < 4) {
+			return fail(400, { profileError: 'Mot de passe : 4 caractères minimum.' });
+		}
+		setUserPassword(user.id, password);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe défini.' };
+	},
+
+	clearPassword: async ({ cookies, locals }) => {
+		const user = requireUser(locals);
+		setUserPassword(user.id, null);
+		cookies.set(USER_COOKIE, profileCookieValue(getUserById(user.id)!), USER_COOKIE_OPTS);
+		return { profileOk: 'Mot de passe retiré.' };
+	},
+
+	avatar: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const file = (await request.formData()).get('avatar');
+		if (!(file instanceof File) || file.size === 0) {
+			return fail(400, { profileError: 'Choisissez une image.' });
+		}
+		if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+			return fail(400, { profileError: 'Format accepté : PNG, JPEG, WebP ou GIF.' });
+		}
+		if (file.size > 2 * 1024 * 1024) {
+			return fail(400, { profileError: 'Image trop lourde (2 Mo max).' });
+		}
+		setUserAvatar(user.id, Buffer.from(await file.arrayBuffer()), file.type);
+		return { profileOk: 'Image mise à jour.' };
+	},
+
+	removeAvatar: async ({ locals }) => {
+		const user = requireUser(locals);
+		setUserAvatar(user.id, null, null);
+		return { profileOk: 'Image retirée.' };
 	},
 
 	/**

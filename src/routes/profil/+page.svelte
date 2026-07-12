@@ -6,6 +6,9 @@
 	let { data, form } = $props();
 	let importFile = $state<FileList | null>(null);
 	let importing = $state(false);
+	let avatarFile = $state<FileList | null>(null);
+	// Force le rechargement de l'image après un envoi (l'URL ne change pas sinon)
+	let avatarBump = $state(0);
 
 	const maxMonth = $derived(Math.max(1, ...data.months.map((m) => m.count)));
 	const maxGenre = $derived(Math.max(1, ...data.perGenre.map((g) => g.minutes)));
@@ -108,6 +111,86 @@
 		</div>
 	</section>
 {/if}
+
+<section class="mt-6">
+	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Profil</h2>
+	<div class="space-y-4 rounded-2xl bg-card p-4">
+		<form
+			method="POST"
+			action="?/avatar"
+			enctype="multipart/form-data"
+			use:enhance={() => {
+				return async ({ update }) => {
+					await update();
+					avatarBump++;
+					avatarFile = null;
+				};
+			}}
+			class="flex flex-wrap items-center gap-3"
+		>
+			{#if data.hasAvatar}
+				<img
+					src="/profils/{data.profileId}/avatar?v={avatarBump}"
+					alt=""
+					class="h-14 w-14 shrink-0 rounded-full object-cover"
+				/>
+			{:else}
+				<span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-line/60 text-xl font-bold">
+					{data.profileName.trim().charAt(0).toUpperCase()}
+				</span>
+			{/if}
+			<input
+				type="file"
+				name="avatar"
+				accept="image/png,image/jpeg,image/webp,image/gif"
+				bind:files={avatarFile}
+				class="max-w-full min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+			/>
+			<button
+				disabled={!avatarFile?.length}
+				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
+			>
+				Enregistrer l'image
+			</button>
+			{#if data.hasAvatar}
+				<button
+					formaction="?/removeAvatar"
+					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+				>
+					Retirer
+				</button>
+			{/if}
+		</form>
+		<form method="POST" action="?/setPassword" use:enhance class="flex flex-wrap items-center gap-2">
+			<input
+				type="password"
+				name="password"
+				placeholder={data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
+				autocomplete="new-password"
+				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+			/>
+			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
+				{data.hasPassword ? 'Changer' : 'Définir'}
+			</button>
+			{#if data.hasPassword}
+				<button
+					formaction="?/clearPassword"
+					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+				>
+					Retirer le mot de passe
+				</button>
+			{/if}
+		</form>
+		<p class="text-xs text-mut">
+			Sans mot de passe, le profil s'ouvre d'un clic sur l'écran des profils.
+		</p>
+		{#if form?.profileError}
+			<p class="text-sm text-red-400">{form.profileError}</p>
+		{:else if form?.profileOk}
+			<p class="text-sm text-ok">✓ {form.profileOk}</p>
+		{/if}
+	</div>
+</section>
 
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Données</h2>
