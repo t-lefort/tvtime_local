@@ -1,7 +1,9 @@
 /**
  * Import de l'export GDPR de TV Time.
  *
- * Usage : npm run import -- <dossier-gdpr>
+ * Usage : npm run import -- <dossier-gdpr> [nom-du-profil]
+ *
+ * Les données sont rattachées au profil indiqué (créé au besoin, « Profil 1 » par défaut).
  *
  * Règles :
  * - followed_tv_show.csv  : active=1 → série suivie (archived selon le flag "archived" = arrêtée) ;
@@ -19,16 +21,21 @@ import path from 'node:path';
 import { parse } from 'csv-parse/sync';
 import { sql } from 'drizzle-orm';
 import { db } from '../src/lib/server/db';
-import { addOrUpdateMovie, getMovieByTmdbId } from '../src/lib/server/movies';
-import { addOrUpdateShow, getShowByTvdbId } from '../src/lib/server/shows';
+import { addOrUpdateMovie, collectMovie, getMovieByTmdbId } from '../src/lib/server/movies';
+import { addOrUpdateShow, followShow, getShowByTvdbId } from '../src/lib/server/shows';
+import { createUser, getUserByName } from '../src/lib/server/users';
 import { findByTvdbId, searchMovie, searchTv } from '../src/lib/server/tmdb';
 import { collectMovieImportData, norm, type MovieToImport, type MovieWatchEvent } from './import-tvtime-utils';
 
 const folder = process.argv[2];
 if (!folder || !fs.existsSync(folder)) {
-	console.error('Usage : npm run import -- <dossier-gdpr>');
+	console.error('Usage : npm run import -- <dossier-gdpr> [nom-du-profil]');
 	process.exit(1);
 }
+
+const profileName = process.argv[3]?.trim() || 'Profil 1';
+const user = getUserByName(profileName) ?? createUser(profileName);
+console.log(`Profil cible : ${user.name}\n`);
 
 function readCsv(name: string): Record<string, string>[] {
 	const file = path.join(folder, name);
@@ -146,8 +153,14 @@ async function resolveTmdbId(item: ShowToImport): Promise<number | null> {
 }
 
 async function importShow(item: ShowToImport): Promise<void> {
+	const followOpts = {
+		archived: item.archived,
+		favorite: favoriteTvdbIds.has(item.tvdbId),
+		followedAt: item.followedAt
+	};
 	const existing = getShowByTvdbId(item.tvdbId);
 	if (existing) {
+		followShow(user.id, existing.id, followOpts);
 		tvdbToLocalId.set(item.tvdbId, existing.id);
 		skipped++;
 		return;
@@ -157,12 +170,8 @@ async function importShow(item: ShowToImport): Promise<void> {
 		unmappedShows.push(item);
 		return;
 	}
-	const show = await addOrUpdateShow(tmdbId, {
-		tvdbId: item.tvdbId,
-		archived: item.archived,
-		favorite: favoriteTvdbIds.has(item.tvdbId),
-		followedAt: item.followedAt
-	});
+	const show = await addOrUpdateShow(tmdbId, { tvdbId: item.tvdbId });
+	followShow(user.id, show.id, followOpts);
 	tvdbToLocalId.set(item.tvdbId, show.id);
 	imported++;
 	console.log(`✓ [${imported + skipped}/${showsToImport.size}] ${show.name} (${item.source}${item.archived ? ', arrêtée' : ''})`);
@@ -216,11 +225,13 @@ async function importMovie(item: MovieToImport): Promise<void> {
 	}
 	const existing = getMovieByTmdbId(tmdbId);
 	if (existing) {
+		collectMovie(user.id, existing.id, { addedAt: item.addedAt });
 		movieKeyToLocalId.set(item.key, existing.id);
 		moviesSkipped++;
 		return;
 	}
-	const movie = await addOrUpdateMovie(tmdbId, { addedAt: item.addedAt });
+	const movie = await addOrUpdateMovie(tmdbId);
+	collectMovie(user.id, movie.id, { addedAt: item.addedAt });
 	movieKeyToLocalId.set(item.key, movie.id);
 	moviesImported++;
 	console.log(`✓ [film ${moviesImported + moviesSkipped}/${movieImportData.moviesToImport.size}] ${movie.title} (${item.source})`);
@@ -254,13 +265,17 @@ const findEpisode = db.$client.prepare(
 	'SELECT id FROM episodes WHERE show_id = ? AND season_number = ? AND episode_number = ?'
 );
 const findWatch = db.$client.prepare(
-	'SELECT id FROM watches WHERE episode_id = ? AND watched_at = ?'
+	'SELECT id FROM watches WHERE user_id = ? AND episode_id = ? AND watched_at = ?'
 );
-const insertWatch = db.$client.prepare('INSERT INTO watches (episode_id, watched_at) VALUES (?, ?)');
+const insertWatch = db.$client.prepare(
+	'INSERT INTO watches (user_id, episode_id, watched_at) VALUES (?, ?, ?)'
+);
 const findMovieWatch = db.$client.prepare(
-	'SELECT id FROM movie_watches WHERE movie_id = ? AND watched_at = ?'
+	'SELECT id FROM movie_watches WHERE user_id = ? AND movie_id = ? AND watched_at = ?'
 );
-const insertMovieWatch = db.$client.prepare('INSERT INTO movie_watches (movie_id, watched_at) VALUES (?, ?)');
+const insertMovieWatch = db.$client.prepare(
+	'INSERT INTO movie_watches (user_id, movie_id, watched_at) VALUES (?, ?, ?)'
+);
 
 for (const ev of watchEvents) {
 	const showId = tvdbToLocalId.get(ev.tvdbShowId);
@@ -273,11 +288,11 @@ for (const ev of watchEvents) {
 		unmatchedEpisodes.push(ev);
 		continue;
 	}
-	if (findWatch.get(ep.id, ev.watchedAt)) {
+	if (findWatch.get(user.id, ep.id, ev.watchedAt)) {
 		watchesAlready++;
 		continue;
 	}
-	insertWatch.run(ep.id, ev.watchedAt);
+	insertWatch.run(user.id, ep.id, ev.watchedAt);
 	watchesInserted++;
 }
 
@@ -287,11 +302,11 @@ for (const ev of movieImportData.watchEvents) {
 		unmatchedMovieWatches.push(ev);
 		continue;
 	}
-	if (findMovieWatch.get(movieId, ev.watchedAt)) {
+	if (findMovieWatch.get(user.id, movieId, ev.watchedAt)) {
 		movieWatchesAlready++;
 		continue;
 	}
-	insertMovieWatch.run(movieId, ev.watchedAt);
+	insertMovieWatch.run(user.id, movieId, ev.watchedAt);
 	movieWatchesInserted++;
 }
 
@@ -301,11 +316,13 @@ const totals = db.get<{ minutes: number; episodes: number }>(sql`
 	SELECT COALESCE(SUM(COALESCE(e.runtime, s.episode_run_time, 45)), 0) AS minutes,
 		COUNT(DISTINCT w.episode_id) AS episodes
 	FROM watches w JOIN episodes e ON e.id = w.episode_id JOIN shows s ON s.id = e.show_id
+	WHERE w.user_id = ${user.id}
 `);
 const movieTotals = db.get<{ minutes: number; movies: number }>(sql`
 	SELECT COALESCE(SUM(COALESCE(m.runtime, 110)), 0) AS minutes,
 		COUNT(DISTINCT w.movie_id) AS movies
 	FROM movie_watches w JOIN movies m ON m.id = w.movie_id
+	WHERE w.user_id = ${user.id}
 `);
 const refMinutes = Number(statsRows[0]?.time_spent ?? 0);
 const totalMinutes = (totals?.minutes ?? 0) + (movieTotals?.minutes ?? 0);

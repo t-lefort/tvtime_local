@@ -1,6 +1,16 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+// Profils : chaque personne utilisant l'instance a sa bibliothèque et son historique
+export const users = sqliteTable('users', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	name: text('name').notNull().unique(),
+	createdAt: text('created_at')
+		.notNull()
+		.default(sql`(datetime('now'))`)
+});
+
+// Catalogue partagé : métadonnées TMDB, communes à tous les profils
 export const shows = sqliteTable('shows', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	tmdbId: integer('tmdb_id').notNull().unique(),
@@ -14,17 +24,35 @@ export const shows = sqliteTable('shows', {
 	tmdbStatus: text('tmdb_status'),
 	genres: text('genres').notNull().default('[]'),
 	episodeRunTime: integer('episode_run_time'),
-	followedAt: text('followed_at')
-		.notNull()
-		.default(sql`(datetime('now'))`),
-	archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
-	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
 	lastSyncedAt: text('last_synced_at'),
 	// Plateformes de streaming (JSON StoredProviders, source JustWatch via TMDB)
 	watchProviders: text('watch_providers'),
 	// Distribution principale (JSON StoredCastMember[], via TMDB)
 	cast: text('cast')
 });
+
+// Suivi d'une série par un profil (statut arrêté/favori propre à chacun)
+export const userShows = sqliteTable(
+	'user_shows',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		showId: integer('show_id')
+			.notNull()
+			.references(() => shows.id, { onDelete: 'cascade' }),
+		followedAt: text('followed_at')
+			.notNull()
+			.default(sql`(datetime('now'))`),
+		archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false)
+	},
+	(t) => [
+		uniqueIndex('user_shows_user_show').on(t.userId, t.showId),
+		index('user_shows_show').on(t.showId)
+	]
+);
 
 export const episodes = sqliteTable(
 	'episodes',
@@ -52,6 +80,9 @@ export const watches = sqliteTable(
 	'watches',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
 		episodeId: integer('episode_id')
 			.notNull()
 			.references(() => episodes.id, { onDelete: 'cascade' }),
@@ -59,7 +90,11 @@ export const watches = sqliteTable(
 			.notNull()
 			.default(sql`(datetime('now'))`)
 	},
-	(t) => [index('watches_episode').on(t.episodeId), index('watches_watched_at').on(t.watchedAt)]
+	(t) => [
+		index('watches_episode').on(t.episodeId),
+		index('watches_watched_at').on(t.watchedAt),
+		index('watches_user').on(t.userId)
+	]
 );
 
 export const movies = sqliteTable('movies', {
@@ -73,20 +108,41 @@ export const movies = sqliteTable('movies', {
 	releaseDate: text('release_date'),
 	runtime: integer('runtime'),
 	genres: text('genres').notNull().default('[]'),
-	addedAt: text('added_at')
-		.notNull()
-		.default(sql`(datetime('now'))`),
-	favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
 	lastSyncedAt: text('last_synced_at'),
 	watchProviders: text('watch_providers'),
 	// Distribution principale (JSON StoredCastMember[], via TMDB)
 	cast: text('cast')
 });
 
+// Présence d'un film dans la collection d'un profil
+export const userMovies = sqliteTable(
+	'user_movies',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		movieId: integer('movie_id')
+			.notNull()
+			.references(() => movies.id, { onDelete: 'cascade' }),
+		addedAt: text('added_at')
+			.notNull()
+			.default(sql`(datetime('now'))`),
+		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false)
+	},
+	(t) => [
+		uniqueIndex('user_movies_user_movie').on(t.userId, t.movieId),
+		index('user_movies_movie').on(t.movieId)
+	]
+);
+
 export const movieWatches = sqliteTable(
 	'movie_watches',
 	{
 		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
 		movieId: integer('movie_id')
 			.notNull()
 			.references(() => movies.id, { onDelete: 'cascade' }),
@@ -96,12 +152,16 @@ export const movieWatches = sqliteTable(
 	},
 	(t) => [
 		index('movie_watches_movie').on(t.movieId),
-		index('movie_watches_watched_at').on(t.watchedAt)
+		index('movie_watches_watched_at').on(t.watchedAt),
+		index('movie_watches_user').on(t.userId)
 	]
 );
 
+export type User = typeof users.$inferSelect;
 export type Show = typeof shows.$inferSelect;
+export type UserShow = typeof userShows.$inferSelect;
 export type Episode = typeof episodes.$inferSelect;
 export type Watch = typeof watches.$inferSelect;
 export type Movie = typeof movies.$inferSelect;
+export type UserMovie = typeof userMovies.$inferSelect;
 export type MovieWatch = typeof movieWatches.$inferSelect;

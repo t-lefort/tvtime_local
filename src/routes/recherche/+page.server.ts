@@ -1,9 +1,11 @@
 import { redirect } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { movies, shows } from '$lib/server/db/schema';
+import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
 import { searchMovie, searchTv } from '$lib/server/tmdb';
-import { addOrUpdateShow } from '$lib/server/shows';
-import { addOrUpdateMovie } from '$lib/server/movies';
+import { addOrUpdateShow, followShow } from '$lib/server/shows';
+import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
+import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
 export interface SearchResult {
@@ -18,7 +20,8 @@ export interface SearchResult {
 	localId: number | null;
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	const user = requireUser(locals);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const type = url.searchParams.get('type') === 'films' ? 'films' : 'series';
 	if (!q) return { q, type, results: [] as SearchResult[], error: null };
@@ -28,7 +31,13 @@ export const load: PageServerLoad = async ({ url }) => {
 		if (type === 'films') {
 			const found = await searchMovie(q);
 			const inDb = new Map(
-				db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies).all().map((r) => [r.tmdbId, r.id])
+				db
+					.select({ tmdbId: movies.tmdbId, id: movies.id })
+					.from(movies)
+					.innerJoin(userMovies, eq(userMovies.movieId, movies.id))
+					.where(eq(userMovies.userId, user.id))
+					.all()
+					.map((r) => [r.tmdbId, r.id])
 			);
 			results = found.map((r) => ({
 				tmdbId: r.id,
@@ -44,7 +53,13 @@ export const load: PageServerLoad = async ({ url }) => {
 		} else {
 			const found = await searchTv(q);
 			const inDb = new Map(
-				db.select({ tmdbId: shows.tmdbId, id: shows.id }).from(shows).all().map((r) => [r.tmdbId, r.id])
+				db
+					.select({ tmdbId: shows.tmdbId, id: shows.id })
+					.from(shows)
+					.innerJoin(userShows, eq(userShows.showId, shows.id))
+					.where(eq(userShows.userId, user.id))
+					.all()
+					.map((r) => [r.tmdbId, r.id])
 			);
 			results = found.map((r) => ({
 				tmdbId: r.id,
@@ -65,17 +80,21 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	add: async ({ request }) => {
+	add: async ({ request, locals }) => {
+		const user = requireUser(locals);
 		const tmdbId = Number((await request.formData()).get('tmdbId'));
 		if (!tmdbId) return;
 		const show = await addOrUpdateShow(tmdbId);
+		followShow(user.id, show.id);
 		redirect(303, `/series/${show.tmdbId}`);
 	},
 
-	addMovie: async ({ request }) => {
+	addMovie: async ({ request, locals }) => {
+		const user = requireUser(locals);
 		const tmdbId = Number((await request.formData()).get('tmdbId'));
 		if (!tmdbId) return;
 		const movie = await addOrUpdateMovie(tmdbId);
+		collectMovie(user.id, movie.id);
 		redirect(303, `/films/${movie.tmdbId}`);
 	}
 };

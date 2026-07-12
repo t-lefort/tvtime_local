@@ -30,12 +30,15 @@
 </svelte:head>
 
 <div class="mb-4 flex items-center justify-between">
-	<h1 class="text-2xl font-bold">Profil</h1>
-	{#if data.authEnabled}
-		<form method="POST" action="?/logout" use:enhance>
-			<button class="text-sm text-mut hover:text-ink">Se déconnecter</button>
-		</form>
-	{/if}
+	<h1 class="text-2xl font-bold">{data.profileName}</h1>
+	<div class="flex items-center gap-4">
+		<a href="/profils" class="text-sm text-mut hover:text-ink">Changer de profil</a>
+		{#if data.authEnabled}
+			<form method="POST" action="?/logout" use:enhance>
+				<button class="text-sm text-mut hover:text-ink">Se déconnecter</button>
+			</form>
+		{/if}
+	</div>
 </div>
 
 <section class="rounded-2xl bg-card p-5 text-center">

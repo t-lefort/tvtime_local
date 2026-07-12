@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 
 	let { children } = $props();
-	const hideNav = $derived(page.url.pathname === '/login');
+	const hideNav = $derived(page.url.pathname === '/login' || page.url.pathname === '/profils');
 </script>
 
 <svelte:head>

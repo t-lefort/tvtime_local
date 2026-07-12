@@ -1,10 +1,13 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
-import { episodes, shows, type Show } from './db/schema';
+import { episodes, shows, userShows, type Show } from './db/schema';
 import { extractCast, extractProviders, getSeasonEpisodes, getShowDetails } from './tmdb';
 
 export interface AddShowOptions {
 	tvdbId?: number | null;
+}
+
+export interface FollowShowOptions {
 	archived?: boolean;
 	favorite?: boolean;
 	followedAt?: string;
@@ -37,13 +40,7 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 
 	const show = db
 		.insert(shows)
-		.values({
-			tmdbId,
-			...base,
-			archived: opts.archived ?? false,
-			favorite: opts.favorite ?? false,
-			...(opts.followedAt ? { followedAt: opts.followedAt } : {})
-		})
+		.values({ tmdbId, ...base })
 		.onConflictDoUpdate({ target: shows.tmdbId, set: base })
 		.returning()
 		.get();
@@ -95,6 +92,51 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 	`);
 
 	return show;
+}
+
+/** Suit une série pour un profil (idempotent : ne touche pas un suivi existant). */
+export function followShow(userId: number, showId: number, opts: FollowShowOptions = {}): void {
+	db.insert(userShows)
+		.values({
+			userId,
+			showId,
+			archived: opts.archived ?? false,
+			favorite: opts.favorite ?? false,
+			...(opts.followedAt ? { followedAt: opts.followedAt } : {})
+		})
+		.onConflictDoNothing()
+		.run();
+}
+
+export function getUserShow(userId: number, showId: number) {
+	return db
+		.select()
+		.from(userShows)
+		.where(and(eq(userShows.userId, userId), eq(userShows.showId, showId)))
+		.get();
+}
+
+/**
+ * Retire la série de la bibliothèque du profil (suivi + historique).
+ * La fiche catalogue est supprimée si plus personne ne la référence.
+ */
+export function unfollowShow(userId: number, showId: number): void {
+	db.delete(userShows)
+		.where(and(eq(userShows.userId, userId), eq(userShows.showId, showId)))
+		.run();
+	db.run(sql`
+		DELETE FROM watches
+		WHERE user_id = ${userId}
+			AND episode_id IN (SELECT id FROM episodes WHERE show_id = ${showId})
+	`);
+	db.run(sql`
+		DELETE FROM shows
+		WHERE id = ${showId}
+			AND NOT EXISTS (SELECT 1 FROM user_shows us WHERE us.show_id = ${showId})
+			AND NOT EXISTS (
+				SELECT 1 FROM watches w JOIN episodes e ON e.id = w.episode_id WHERE e.show_id = ${showId}
+			)
+	`);
 }
 
 export function getShowByTmdbId(tmdbId: number): Show | undefined {
