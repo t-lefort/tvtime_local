@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { movies, shows } from '$lib/server/db/schema';
-import { getPersonFilmography, type PersonCredit } from '$lib/server/tmdb';
+import { getPersonFilmography, TmdbError, type PersonCredit, type PersonFilmography } from '$lib/server/tmdb';
 import type { PageServerLoad } from './$types';
 
 export interface PersonCreditWithLocal extends PersonCredit {
@@ -12,7 +12,14 @@ export const load: PageServerLoad = async ({ params }) => {
 	const personId = Number(params.id);
 	if (!Number.isInteger(personId) || personId <= 0) error(404, 'Personne introuvable');
 
-	const { person, movies: movieCredits, shows: showCredits } = await getPersonFilmography(personId);
+	let filmography: PersonFilmography;
+	try {
+		filmography = await getPersonFilmography(personId);
+	} catch (e) {
+		if (e instanceof TmdbError && e.status === 404) error(404, 'Personne introuvable');
+		throw e;
+	}
+	const { person, movies: movieCredits, shows: showCredits } = filmography;
 
 	const movieIds = new Map(
 		db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies).all().map((r) => [r.tmdbId, r.id])

@@ -200,6 +200,7 @@ export function getMoviesWithWatch(filter?: { id?: number; tmdbId?: number }): M
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
 			m.release_date AS releaseDate, m.runtime, m.genres, m.added_at AS addedAt,
 			m.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
+			m.crew, m.production_companies AS productionCompanies,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id) AS watchCount,
 			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id) AS lastWatchedAt
 		FROM movies m
