@@ -155,6 +155,19 @@
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Profil</h2>
 	<div class="space-y-4 rounded-2xl bg-card p-4">
+		<form method="POST" action="?/rename" use:enhance class="flex flex-wrap items-center gap-2">
+			<input
+				type="text"
+				name="name"
+				value={data.profileName}
+				maxlength="30"
+				autocomplete="off"
+				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+			/>
+			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
+				Renommer
+			</button>
+		</form>
 		<form
 			method="POST"
 			action="?/avatar"

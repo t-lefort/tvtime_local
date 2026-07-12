@@ -8,7 +8,9 @@ import { db } from '$lib/server/db';
 import { getProfileStats } from '$lib/server/queries';
 import {
 	getUserById,
+	getUserByName,
 	profileCookieValue,
+	renameUser,
 	requireUser,
 	setUserAvatar,
 	setUserPassword,
@@ -68,6 +70,19 @@ export const actions: Actions = {
 	logout: async ({ cookies }) => {
 		cookies.delete('session', { path: '/' });
 		redirect(303, '/login');
+	},
+
+	rename: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const name = String((await request.formData()).get('name') ?? '').trim();
+		if (!name) return fail(400, { profileError: 'Donnez un nom au profil.' });
+		if (name.length > 30) return fail(400, { profileError: 'Nom trop long (30 caractères max).' });
+		const existing = getUserByName(name);
+		if (existing && existing.id !== user.id) {
+			return fail(400, { profileError: 'Ce nom de profil existe déjà.' });
+		}
+		renameUser(user.id, name);
+		return { profileOk: 'Profil renommé.' };
 	},
 
 	/** Définit ou change le mot de passe du profil actif (et re-signe son cookie). */

@@ -35,6 +35,10 @@ export function createUser(name: string, password?: string): User {
 		.get();
 }
 
+export function renameUser(id: number, name: string): void {
+	db.update(users).set({ name }).where(eq(users.id, id)).run();
+}
+
 /** Définit (ou retire avec null) le mot de passe du profil. */
 export function setUserPassword(id: number, password: string | null): void {
 	db.update(users)

@@ -62,6 +62,7 @@ const {
 	getUserById,
 	listUsers,
 	profileCookieValue,
+	renameUser,
 	setUserAvatar,
 	setUserPassword,
 	userFromCookie
@@ -156,8 +157,10 @@ test('mot de passe de profil : vérification et cookie signé', () => {
 	deleteUser(alice.id);
 });
 
-test("l'image de profil est stockée et retirable", () => {
+test("l'image de profil est stockée et retirable, le profil renommable", () => {
 	const carol = createUser('Carol');
+	renameUser(carol.id, 'Caroline');
+	assert.equal(getUserById(carol.id)?.name, 'Caroline');
 	setUserAvatar(carol.id, Buffer.from([1, 2, 3]), 'image/png');
 	let stored = getUserById(carol.id);
 	assert.equal(stored?.avatarType, 'image/png');
