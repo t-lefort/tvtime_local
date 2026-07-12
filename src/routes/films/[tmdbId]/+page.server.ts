@@ -7,10 +7,13 @@ import { addOrUpdateMovie, collectMovie, getUserMovie, uncollectMovie } from '$l
 import { requireUser } from '$lib/server/users';
 import {
 	extractCast,
+	extractCompanies,
+	extractCrew,
 	extractProviders,
-	getCast,
 	getMovieDetails,
 	type StoredCastMember,
+	type StoredCompany,
+	type StoredCrewMember,
 	type StoredProviders
 } from '$lib/server/tmdb';
 import type { Actions, PageServerLoad } from './$types';
@@ -37,13 +40,23 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const local = getMoviesWithWatch(user.id, { tmdbId })[0];
 	if (local) {
-		// Complète la distribution en direct pour les films ajoutés avant cette fonctionnalité
+		// Complète distribution, équipe et sociétés en direct pour les films ajoutés avant ces fonctionnalités
 		let cast = JSON.parse(local.cast ?? '[]') as StoredCastMember[];
-		if (!cast.length) {
-			cast = await getCast('movie', tmdbId);
-			if (cast.length) {
-				db.update(movies).set({ cast: JSON.stringify(cast) }).where(eq(movies.id, local.id)).run();
-			}
+		let crew = JSON.parse(local.crew ?? '[]') as StoredCrewMember[];
+		let companies = JSON.parse(local.productionCompanies ?? '[]') as StoredCompany[];
+		if (!cast.length || local.crew === null || local.productionCompanies === null) {
+			const details = await getMovieDetails(tmdbId);
+			if (!cast.length) cast = extractCast(details.credits);
+			crew = extractCrew(details.credits);
+			companies = extractCompanies(details.production_companies);
+			db.update(movies)
+				.set({
+					cast: cast.length ? JSON.stringify(cast) : local.cast,
+					crew: JSON.stringify(crew),
+					productionCompanies: JSON.stringify(companies)
+				})
+				.where(eq(movies.id, local.id))
+				.run();
 		}
 		return {
 			backHref,
@@ -64,7 +77,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 				providers: local.watchProviders
 					? (JSON.parse(local.watchProviders) as StoredProviders)
 					: null,
-				cast
+				cast,
+				crew,
+				companies
 			}
 		};
 	}
@@ -87,7 +102,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			watchCount: 0,
 			lastWatchedAt: null as string | null,
 			providers: extractProviders(details['watch/providers']),
-			cast: extractCast(details.credits)
+			cast: extractCast(details.credits),
+			crew: extractCrew(details.credits),
+			companies: extractCompanies(details.production_companies)
 		}
 	};
 };

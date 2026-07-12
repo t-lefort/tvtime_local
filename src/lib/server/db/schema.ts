@@ -116,7 +116,11 @@ export const movies = sqliteTable('movies', {
 	lastSyncedAt: text('last_synced_at'),
 	watchProviders: text('watch_providers'),
 	// Distribution principale (JSON StoredCastMember[], via TMDB)
-	cast: text('cast')
+	cast: text('cast'),
+	// Équipe principale : réalisation et production (JSON StoredCrewMember[], via TMDB)
+	crew: text('crew'),
+	// Sociétés de production (JSON StoredCompany[], via TMDB)
+	productionCompanies: text('production_companies')
 });
 
 // Présence d'un film dans la collection d'un profil

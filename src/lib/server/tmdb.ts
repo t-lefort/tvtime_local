@@ -96,8 +96,15 @@ export interface TmdbMovieSummary {
 export interface TmdbMovieDetails extends TmdbMovieSummary {
 	runtime: number | null;
 	genres: { id: number; name: string }[];
+	production_companies?: TmdbProductionCompany[];
 	'watch/providers'?: TmdbWatchProviders;
 	credits?: TmdbCredits;
+}
+
+export interface TmdbProductionCompany {
+	id: number;
+	name: string;
+	logo_path: string | null;
 }
 
 interface TmdbPersonSummary {
@@ -115,8 +122,16 @@ export interface TmdbCastMember {
 	order: number;
 }
 
+export interface TmdbCrewMember {
+	id: number;
+	name: string;
+	job: string;
+	department: string;
+}
+
 interface TmdbCredits {
 	cast?: TmdbCastMember[];
+	crew?: TmdbCrewMember[];
 }
 
 /** Acteur stocké en base (colonne cast, JSON). Distribution principale via TMDB. */
@@ -144,6 +159,53 @@ export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[
 			character: c.character || null,
 			profilePath: c.profile_path
 		}));
+}
+
+/** Membre d'équipe stocké en base (colonne crew, JSON) : réalisation et production. */
+export interface StoredCrewMember {
+	id: number;
+	name: string;
+	job: string;
+}
+
+/** Postes conservés dans l'équipe stockée, dans l'ordre d'affichage. */
+export const CREW_JOBS = ['Director', 'Producer'] as const;
+
+/** Nombre de personnes conservées par poste (réalisateur, producteur). */
+const MAX_CREW_PER_JOB = 6;
+
+/** Réduit les crédits TMDB à l'équipe principale (réalisation, production), prête à stocker. */
+export function extractCrew(credits: TmdbCredits | undefined): StoredCrewMember[] {
+	const crew = credits?.crew;
+	if (!crew?.length) return [];
+	const result: StoredCrewMember[] = [];
+	for (const job of CREW_JOBS) {
+		const seen = new Set<number>();
+		for (const member of crew) {
+			if (member.job !== job || seen.has(member.id)) continue;
+			seen.add(member.id);
+			result.push({ id: member.id, name: member.name, job });
+			if (seen.size >= MAX_CREW_PER_JOB) break;
+		}
+	}
+	return result;
+}
+
+/** Société de production stockée en base (colonne production_companies, JSON). */
+export interface StoredCompany {
+	id: number;
+	name: string;
+	logoPath: string | null;
+}
+
+/** Nombre de sociétés de production conservées. */
+const MAX_COMPANIES = 5;
+
+/** Réduit les sociétés de production TMDB, prêtes à stocker. */
+export function extractCompanies(companies: TmdbProductionCompany[] | undefined): StoredCompany[] {
+	return (companies ?? [])
+		.slice(0, MAX_COMPANIES)
+		.map((c) => ({ id: c.id, name: c.name, logoPath: c.logo_path }));
 }
 
 interface TmdbMovieCastCredit extends TmdbMovieSummary {
@@ -417,11 +479,27 @@ export interface PersonFilmography {
 /** Nombre de titres conservés par type dans la filmographie d'une personne. */
 const MAX_FILMOGRAPHY = 40;
 
+/** Traductions françaises des postes TMDB affichés comme rôle dans une filmographie. */
+const JOB_FR: Record<string, string> = {
+	Director: 'Réalisateur',
+	Producer: 'Producteur',
+	'Executive Producer': 'Producteur exécutif',
+	Writer: 'Scénariste',
+	Screenplay: 'Scénariste',
+	Creator: 'Créateur',
+	Novel: 'Roman',
+	'Original Music Composer': 'Compositeur'
+};
+
+function jobFr(job: string): string {
+	return JOB_FR[job] ?? job;
+}
+
 export async function getPersonDetails(personId: number): Promise<TmdbPersonDetails> {
 	return tmdb<TmdbPersonDetails>(`/person/${personId}`);
 }
 
-/** Fiche d'une personne + ses films et séries (rôles d'acteur), triés par notoriété. */
+/** Fiche d'une personne + ses films et séries (rôles d'acteur et postes d'équipe), triés par notoriété. */
 export async function getPersonFilmography(personId: number): Promise<PersonFilmography> {
 	const [person, movieCredits, tvCredits] = await Promise.all([
 		getPersonDetails(personId),
@@ -429,25 +507,37 @@ export async function getPersonFilmography(personId: number): Promise<PersonFilm
 		getPersonTvCredits(personId)
 	]);
 
-	const movies = collectFilmography(movieCredits.cast, (c) => ({
-		tmdbId: c.id,
-		title: c.title || c.original_title,
-		posterPath: c.poster_path,
-		date: c.release_date || null,
-		role: c.character || null,
-		voteAverage: c.vote_average,
-		popularity: c.popularity ?? 0
-	}));
+	const movies = collectFilmography(
+		[
+			...movieCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
+			...movieCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
+		],
+		({ summary: c, role }) => ({
+			tmdbId: c.id,
+			title: c.title || c.original_title,
+			posterPath: c.poster_path,
+			date: c.release_date || null,
+			role,
+			voteAverage: c.vote_average,
+			popularity: c.popularity ?? 0
+		})
+	);
 
-	const shows = collectFilmography(tvCredits.cast, (c) => ({
-		tmdbId: c.id,
-		title: c.name || c.original_name,
-		posterPath: c.poster_path,
-		date: c.first_air_date || null,
-		role: c.character || null,
-		voteAverage: c.vote_average,
-		popularity: c.popularity ?? 0
-	}));
+	const shows = collectFilmography(
+		[
+			...tvCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
+			...tvCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
+		],
+		({ summary: c, role }) => ({
+			tmdbId: c.id,
+			title: c.name || c.original_name,
+			posterPath: c.poster_path,
+			date: c.first_air_date || null,
+			role,
+			voteAverage: c.vote_average,
+			popularity: c.popularity ?? 0
+		})
+	);
 
 	return { person, movies, shows };
 }
@@ -471,4 +561,38 @@ function personCreditSort(a: PersonCredit, b: PersonCredit): number {
 	const popularity = b.popularity - a.popularity;
 	if (popularity !== 0) return popularity;
 	return (b.date ?? '').localeCompare(a.date ?? '');
+}
+
+export interface TmdbCompanyDetails {
+	id: number;
+	name: string;
+	logo_path: string | null;
+	description: string | null;
+	headquarters: string | null;
+	origin_country: string | null;
+}
+
+export async function getCompanyDetails(companyId: number): Promise<TmdbCompanyDetails> {
+	return tmdb<TmdbCompanyDetails>(`/company/${companyId}`);
+}
+
+/** Nombre de pages "discover" chargées pour les films d'une société (20 films par page). */
+const COMPANY_MOVIE_PAGES = 2;
+
+/** Films d'une société de production, triés par notoriété. */
+export async function getCompanyMovies(companyId: number): Promise<TmdbMovieSummary[]> {
+	const pages = await Promise.all(
+		Array.from({ length: COMPANY_MOVIE_PAGES }, (_, i) =>
+			tmdb<{ results: TmdbMovieSummary[]; total_pages: number }>('/discover/movie', {
+				with_companies: companyId,
+				sort_by: 'popularity.desc',
+				include_adult: false,
+				page: i + 1
+			})
+		)
+	);
+	return mergeMovieSearchResults(
+		pages.flatMap((p) => p.results),
+		[]
+	);
 }

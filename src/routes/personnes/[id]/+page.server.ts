@@ -3,7 +3,12 @@ import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
 import { requireUser } from '$lib/server/users';
-import { getPersonFilmography, type PersonCredit } from '$lib/server/tmdb';
+import {
+	getPersonFilmography,
+	TmdbError,
+	type PersonCredit,
+	type PersonFilmography
+} from '$lib/server/tmdb';
 import type { PageServerLoad } from './$types';
 
 export interface PersonCreditWithLocal extends PersonCredit {
@@ -15,7 +20,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const personId = Number(params.id);
 	if (!Number.isInteger(personId) || personId <= 0) error(404, 'Personne introuvable');
 
-	const { person, movies: movieCredits, shows: showCredits } = await getPersonFilmography(personId);
+	let filmography: PersonFilmography;
+	try {
+		filmography = await getPersonFilmography(personId);
+	} catch (e) {
+		if (e instanceof TmdbError && e.status === 404) error(404, 'Personne introuvable');
+		throw e;
+	}
+	const { person, movies: movieCredits, shows: showCredits } = filmography;
 
 	const movieIds = new Map(
 		db

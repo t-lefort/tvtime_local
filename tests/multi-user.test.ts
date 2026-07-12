@@ -2,8 +2,8 @@
  * Système multi-utilisateurs : migration d'une base mono-utilisateur existante
  * vers les profils, puis isolation des données entre profils.
  *
- * La base de test est créée avec les migrations 0000-0002 (schéma mono-utilisateur),
- * remplie, puis ouverte par l'app (qui applique 0003) — comme une vraie mise à jour.
+ * La base de test est créée avec les migrations 0000-0003 (schéma mono-utilisateur),
+ * remplie, puis ouverte par l'app (qui applique 0004) — comme une vraie mise à jour.
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -23,7 +23,7 @@ process.env.DATABASE_PATH = dbPath;
 const legacyDir = path.join(tmpDir, 'drizzle-legacy');
 fs.mkdirSync(path.join(legacyDir, 'meta'), { recursive: true });
 const journal = JSON.parse(fs.readFileSync('drizzle/meta/_journal.json', 'utf8'));
-const legacyEntries = journal.entries.filter((e: { idx: number }) => e.idx <= 2);
+const legacyEntries = journal.entries.filter((e: { idx: number }) => e.idx <= 3);
 fs.writeFileSync(
 	path.join(legacyDir, 'meta', '_journal.json'),
 	JSON.stringify({ ...journal, entries: legacyEntries })

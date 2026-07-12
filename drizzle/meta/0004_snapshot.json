@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f9ec610f-d5bf-4b27-8a93-fffe67a83e75",
-  "prevId": "56f8ae8f-2067-4340-8cde-ad91ab378a55",
+  "id": "92269f88-3799-432a-ab5f-dca259c8a8f6",
+  "prevId": "6d5dc86e-c0a0-4c49-9da9-6d286b34c080",
   "tables": {
     "episodes": {
       "name": "episodes",
@@ -300,6 +300,20 @@
         },
         "cast": {
           "name": "cast",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "crew": {
+          "name": "crew",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "production_companies": {
+          "name": "production_companies",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
