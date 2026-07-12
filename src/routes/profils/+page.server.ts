@@ -44,12 +44,8 @@ export const actions: Actions = {
 		const id = Number(data.get('userId'));
 		const user = getUserById(id);
 		if (!user) return fail(400, { error: 'Profil introuvable.', userId: id });
-		if (user.passwordHash) {
-			const password = String(data.get('password') ?? '');
-			if (!password || !verifyPassword(password, user.passwordHash)) {
-				return fail(403, { error: 'Mot de passe incorrect.', userId: id });
-			}
-		}
+		// Profil protégé : la connexion se fait sur sa page dédiée
+		if (user.passwordHash) redirect(303, `/profils/${user.id}/connexion`);
 		cookies.set(USER_COOKIE, profileCookieValue(user), USER_COOKIE_OPTS);
 		redirect(303, '/');
 	},
