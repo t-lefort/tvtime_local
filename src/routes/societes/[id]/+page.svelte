@@ -47,7 +47,7 @@
 	<h2 class="mt-6 mb-3 text-sm font-semibold tracking-wide text-mut uppercase">
 		Films ({data.movies.length})
 	</h2>
-	<ul class="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4">
+	<ul class="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
 		{#each data.movies as movie (movie.tmdbId)}
 			<li>
 				<a href="/films/{movie.tmdbId}" class="group block">

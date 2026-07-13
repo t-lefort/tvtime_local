@@ -13,7 +13,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<main class="mx-auto w-full max-w-2xl px-4 pt-5 pb-28">
+<main class="mx-auto w-full max-w-2xl px-4 pt-5 pb-28 md:max-w-4xl lg:max-w-6xl md:px-6">
 	{@render children()}
 </main>
 
