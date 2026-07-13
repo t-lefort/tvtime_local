@@ -87,6 +87,87 @@ function minDate(a: string | undefined, b: string | undefined): string | undefin
 	return a.localeCompare(b) <= 0 ? a : b;
 }
 
+/** Film importé décrit par son titre et, si disponible, son année de sortie. */
+export interface MovieMatchQuery {
+	name: string;
+	releaseYear?: string;
+}
+
+/**
+ * Candidat de recherche TMDB réduit aux champs utiles au classement.
+ * `TmdbMovieSummary` (tmdb.ts) est structurellement compatible : pas d'import croisé.
+ */
+export interface MovieMatchCandidate {
+	id: number;
+	title: string;
+	original_title: string;
+	release_date: string | null;
+	popularity?: number;
+	vote_count?: number;
+}
+
+/** Vrai si le titre localisé ou original correspond exactement (normalisé) à la requête. */
+export function isExactMovieTitle(candidate: MovieMatchCandidate, query: MovieMatchQuery): boolean {
+	const target = norm(query.name);
+	return norm(candidate.title) === target || norm(candidate.original_title) === target;
+}
+
+/**
+ * Score de pertinence d'un candidat TMDB pour un film importé depuis TV Time.
+ * On combine trois signaux, du plus fort au plus faible :
+ *  - la correspondance du titre (exacte ≫ préfixe ≫ sous-chaîne), sur le titre
+ *    localisé ou le titre original ;
+ *  - l'écart d'année de sortie, tolérant un décalage de ±1 an (fréquent entre la
+ *    sortie cinéma et la date TMDB par région), et pénalisant un écart franc ;
+ *  - la notoriété (popularité et nombre de votes), qui départage les homonymes et
+ *    les remakes de même titre.
+ */
+export function scoreMovieCandidate(candidate: MovieMatchCandidate, query: MovieMatchQuery): number {
+	const target = norm(query.name);
+	const title = norm(candidate.title);
+	const original = norm(candidate.original_title);
+
+	let score = 0;
+	if (title === target || original === target) {
+		score += 1000;
+	} else if ([title, original].some((t) => t && (t.startsWith(target) || target.startsWith(t)))) {
+		score += 350;
+	} else if ([title, original].some((t) => t && (t.includes(target) || target.includes(t)))) {
+		score += 120;
+	}
+
+	const candidateYear = candidate.release_date?.slice(0, 4);
+	if (query.releaseYear && candidateYear && /^\d{4}$/.test(candidateYear)) {
+		const diff = Math.abs(Number(candidateYear) - Number(query.releaseYear));
+		if (diff === 0) score += 300;
+		else if (diff === 1) score += 120;
+		else if (diff === 2) score += 30;
+		else score -= 250;
+	}
+
+	// Notoriété : bornée pour rester un simple départage, jamais dominante sur le titre.
+	score += Math.min(candidate.popularity ?? 0, 500) / 10; // ≤ +50
+	score += Math.min(candidate.vote_count ?? 0, 5000) / 100; // ≤ +50
+	return score;
+}
+
+/** Choisit le candidat TMDB le mieux classé, ou null si la liste est vide. */
+export function pickBestMovieMatch<T extends MovieMatchCandidate>(
+	candidates: T[],
+	query: MovieMatchQuery
+): T | null {
+	let best: T | null = null;
+	let bestScore = -Infinity;
+	for (const candidate of candidates) {
+		const score = scoreMovieCandidate(candidate, query);
+		if (score > bestScore) {
+			bestScore = score;
+			best = candidate;
+		}
+	}
+	return best;
+}
+
 export function collectMovieImportData(rows: Record<string, string>[]): MovieImportData {
 	const moviesToImport = new Map<string, MovieToImport>();
 	const watchEvents: MovieWatchEvent[] = [];
