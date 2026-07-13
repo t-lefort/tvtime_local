@@ -20,7 +20,9 @@ import { addOrUpdateShow, followShow, getShowByTvdbId } from './shows';
 import { findByTvdbId, searchMovie, searchTv } from './tmdb';
 import {
 	collectMovieImportData,
+	isExactMovieTitle,
 	norm,
+	pickBestMovieMatch,
 	type MovieToImport,
 	type MovieWatchEvent,
 	type TvTimeCsvFiles,
@@ -258,17 +260,13 @@ export async function runTvTimeImport(
 
 	async function resolveMovieTmdbId(item: MovieToImport): Promise<number | null> {
 		const results = await searchMovie(item.name);
-		let candidates = results;
-		if (item.releaseYear) {
-			const sameYear = results.filter((r) => r.release_date?.slice(0, 4) === item.releaseYear);
-			if (sameYear.length) candidates = sameYear;
-		}
-		const exact = candidates.find(
-			(r) => norm(r.title) === norm(item.name) || norm(r.original_title) === norm(item.name)
-		);
-		const pick = exact ?? candidates[0];
+		// Classement pondéré : correspondance du titre, puis année (±1 an toléré),
+		// puis notoriété — plutôt que le premier résultat brut, souvent le mauvais.
+		const pick = pickBestMovieMatch(results, item);
 		if (!pick) return null;
-		if (!exact) matchedMoviesByName.push({ name: item.name, tmdbTitle: pick.title, tmdbId: pick.id });
+		if (!isExactMovieTitle(pick, item)) {
+			matchedMoviesByName.push({ name: item.name, tmdbTitle: pick.title, tmdbId: pick.id });
+		}
 		return pick.id;
 	}
 

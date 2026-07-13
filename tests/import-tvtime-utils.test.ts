@@ -4,8 +4,17 @@ import { zipSync } from 'fflate';
 import {
 	collectMovieImportData,
 	csvFilesFromUpload,
-	norm
+	norm,
+	pickBestMovieMatch,
+	type MovieMatchCandidate
 } from '../src/lib/server/tvtime-import-utils';
+
+const candidate = (over: Partial<MovieMatchCandidate> & { id: number }): MovieMatchCandidate => ({
+	title: '',
+	original_title: '',
+	release_date: null,
+	...over
+});
 
 test('csvFilesFromUpload retrouve les CSV attendus dans un zip GDPR ou des fichiers isolés', () => {
 	const enc = new TextEncoder();
@@ -91,4 +100,43 @@ test('collectMovieImportData extracts watched, rewatched and watchlist movies', 
 			{ key: oldEntryKey, watchedAt: '2020-05-06 12:00:00', type: 'watch' }
 		]
 	);
+});
+
+test('pickBestMovieMatch privilégie le titre exact malgré un candidat plus populaire', () => {
+	const candidates = [
+		// Résultat très populaire mais titre non correspondant (ex. crédit de personne)
+		candidate({ id: 1, title: 'Dune : Deuxième partie', release_date: '2024-02-28', popularity: 900 }),
+		candidate({ id: 2, title: 'Dune', original_title: 'Dune', release_date: '2021-09-15', popularity: 200 })
+	];
+	assert.equal(pickBestMovieMatch(candidates, { name: 'Dune', releaseYear: '2021' })?.id, 2);
+});
+
+test('pickBestMovieMatch départage les remakes de même titre par l’année de sortie', () => {
+	const candidates = [
+		candidate({ id: 1, title: 'Dune', original_title: 'Dune', release_date: '1984-12-14', popularity: 40 }),
+		candidate({ id: 2, title: 'Dune', original_title: 'Dune', release_date: '2021-09-15', popularity: 30 })
+	];
+	assert.equal(pickBestMovieMatch(candidates, { name: 'Dune', releaseYear: '2021' })?.id, 2);
+	assert.equal(pickBestMovieMatch(candidates, { name: 'Dune', releaseYear: '1984' })?.id, 1);
+});
+
+test('pickBestMovieMatch tolère un décalage d’un an sur l’année importée', () => {
+	const candidates = [
+		candidate({ id: 1, title: 'Parasite', original_title: 'Parasite', release_date: '2019-05-30', popularity: 80 }),
+		candidate({ id: 2, title: 'Autre film', release_date: '2020-01-01', popularity: 500 })
+	];
+	// TV Time indique 2020 (sortie France) ; le titre exact de 2019 doit gagner
+	assert.equal(pickBestMovieMatch(candidates, { name: 'Parasite', releaseYear: '2020' })?.id, 1);
+});
+
+test('pickBestMovieMatch départage par notoriété à titre et année équivalents', () => {
+	const candidates = [
+		candidate({ id: 1, title: 'Titre', original_title: 'Titre', release_date: '2010-01-01', vote_count: 10 }),
+		candidate({ id: 2, title: 'Titre', original_title: 'Titre', release_date: '2010-06-01', vote_count: 3000 })
+	];
+	assert.equal(pickBestMovieMatch(candidates, { name: 'Titre', releaseYear: '2010' })?.id, 2);
+});
+
+test('pickBestMovieMatch renvoie null sur une liste vide', () => {
+	assert.equal(pickBestMovieMatch([], { name: 'Rien' }), null);
 });
