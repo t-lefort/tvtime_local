@@ -8,7 +8,7 @@
 {#if cast.length}
 	<section class="mt-6">
 		<h2 class="mb-2 text-sm font-semibold tracking-wide text-mut uppercase">Distribution</h2>
-		<ul class="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+		<ul class="-mx-4 flex gap-3 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			{#each cast as person (person.id)}
 				<li class="w-20 shrink-0">
 					<a href="/personnes/{person.id}" class="group block" title="Voir la filmographie de {person.name}">
