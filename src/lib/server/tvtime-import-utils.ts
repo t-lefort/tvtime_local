@@ -1,3 +1,43 @@
+import { unzipSync } from 'fflate';
+
+export const TVTIME_CSV_NAMES = [
+	'followed_tv_show.csv',
+	'tracking-prod-records-v2.csv',
+	'tracking-prod-records.csv',
+	'user_show_special_status.csv',
+	'user_statistics.csv'
+] as const;
+
+export type TvTimeCsvName = (typeof TVTIME_CSV_NAMES)[number];
+
+/** Contenu des CSV de l'export, indexé par nom de fichier (tous optionnels). */
+export type TvTimeCsvFiles = Partial<Record<TvTimeCsvName, string>>;
+
+/**
+ * Retrouve les CSV attendus dans des fichiers envoyés depuis l'interface :
+ * le zip GDPR complet ou des CSV sélectionnés individuellement.
+ */
+export function csvFilesFromUpload(uploads: { name: string; data: Uint8Array }[]): TvTimeCsvFiles {
+	const found: TvTimeCsvFiles = {};
+	const decoder = new TextDecoder();
+	const collect = (filePath: string, data: Uint8Array) => {
+		const base = filePath.split(/[\\/]/).pop()?.toLowerCase();
+		const match = TVTIME_CSV_NAMES.find((n) => n === base);
+		if (match) found[match] = decoder.decode(data);
+	};
+	for (const f of uploads) {
+		if (f.name.toLowerCase().endsWith('.zip')) {
+			for (const [entryPath, data] of Object.entries(unzipSync(f.data))) {
+				if (entryPath.startsWith('__MACOSX/') || entryPath.endsWith('/')) continue;
+				collect(entryPath, data);
+			}
+		} else {
+			collect(f.name, f.data);
+		}
+	}
+	return found;
+}
+
 export interface MovieToImport {
 	key: string;
 	name: string;

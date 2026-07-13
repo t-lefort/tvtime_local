@@ -6,6 +6,12 @@ import Database from 'better-sqlite3';
 import { db } from '$lib/server/db';
 import { getProfileStats } from '$lib/server/queries';
 import {
+	csvFilesFromUpload,
+	getTvTimeImportJob,
+	startTvTimeImportJob,
+	TVTIME_CSV_NAMES
+} from '$lib/server/tvtime-import';
+import {
 	getUserById,
 	getUserByName,
 	profileCookieValue,
@@ -60,7 +66,8 @@ export const load: PageServerLoad = ({ locals }) => {
 				minutesWatched: s.minutesWatched,
 				watchedCount: s.watchedCount,
 				state: s.state
-			}))
+			})),
+		tvtimeJob: getTvTimeImportJob()
 	};
 };
 
@@ -117,6 +124,39 @@ export const actions: Actions = {
 		const user = requireUser(locals);
 		setUserAvatar(user.id, null, null);
 		return { profileOk: 'Image retirée.' };
+	},
+
+	/**
+	 * Lance en arrière-plan l'import de l'export GDPR de TV Time (zip complet ou
+	 * CSV individuels) dans le profil actif. La page suit ensuite la progression
+	 * via GET /profil/import-tvtime.
+	 */
+	importTvTime: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const files = (await request.formData())
+			.getAll('gdpr')
+			.filter((f): f is File => f instanceof File && f.size > 0);
+		if (!files.length) {
+			return fail(400, { tvtimeError: 'Choisissez le zip de l’export TV Time ou ses fichiers CSV.' });
+		}
+		let csv;
+		try {
+			csv = csvFilesFromUpload(
+				await Promise.all(
+					files.map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }))
+				)
+			);
+		} catch {
+			return fail(400, { tvtimeError: 'Archive illisible : envoyez le zip GDPR de TV Time tel quel.' });
+		}
+		if (!Object.keys(csv).length) {
+			return fail(400, {
+				tvtimeError: `Aucun fichier attendu trouvé (${TVTIME_CSV_NAMES.slice(0, 2).join(', ')}…). Vérifiez que c’est bien l’export GDPR de TV Time.`
+			});
+		}
+		const res = startTvTimeImportJob(user, csv);
+		if ('error' in res) return fail(409, { tvtimeError: res.error });
+		return { tvtimeStarted: true };
 	},
 
 	/**

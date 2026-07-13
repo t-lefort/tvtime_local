@@ -1,11 +1,59 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import Poster from '$lib/components/Poster.svelte';
 	import { formatDuration, formatMonth } from '$lib/format';
 
 	let { data, form } = $props();
 	let importFile = $state<FileList | null>(null);
 	let importing = $state(false);
+
+	// ---- Import de l'export GDPR TV Time (job serveur suivi par sondage) ----
+	let tvtimeFiles = $state<FileList | null>(null);
+	let tvtimeStarting = $state(false);
+	// svelte-ignore state_referenced_locally -- valeur initiale seulement, mise à jour ensuite par le sondage
+	let tvtimeJob = $state(data.tvtimeJob);
+
+	const TVTIME_PHASES: Record<string, string> = {
+		préparation: 'Lecture des fichiers',
+		séries: 'Import des séries',
+		films: 'Import des films',
+		visionnages: 'Historique des visionnages',
+		terminé: 'Terminé'
+	};
+
+	async function refreshTvTimeJob() {
+		try {
+			const res = await fetch('/profil/import-tvtime');
+			if (res.ok) tvtimeJob = await res.json();
+		} catch {
+			// erreur réseau passagère : le prochain tick réessaiera
+		}
+	}
+
+	// Suit la progression tant qu'un import tourne, puis recharge les stats de la page
+	$effect(() => {
+		if (!tvtimeJob?.running) return;
+		const timer = setInterval(async () => {
+			await refreshTvTimeJob();
+			if (!tvtimeJob?.running) await invalidateAll();
+		}, 2000);
+		return () => clearInterval(timer);
+	});
+
+	const tvtimeReport = $derived(tvtimeJob && !tvtimeJob.running ? tvtimeJob.report : undefined);
+	const tvtimeIssues = $derived(
+		tvtimeReport
+			? tvtimeReport.unmappedShows.length +
+					tvtimeReport.unmappedMovies.length +
+					tvtimeReport.failedShows.length +
+					tvtimeReport.failedMovies.length +
+					tvtimeReport.matchedByName.length +
+					tvtimeReport.matchedMoviesByName.length +
+					tvtimeReport.unmatchedEpisodes.length +
+					tvtimeReport.unmatchedMovieWatches.length
+			: 0
+	);
 	let avatarFile = $state<FileList | null>(null);
 	// Force le rechargement de l'image après un envoi (l'URL ne change pas sinon)
 	let avatarBump = $state(0);
@@ -287,6 +335,149 @@
 				✓ Import réussi : {form.imported.shows} séries, {form.imported.movies} film{form.imported.movies > 1 ? 's' : ''},
 				{form.imported.watches.toLocaleString('fr-FR')} visionnages.
 			</p>
+		{/if}
+	</div>
+</section>
+
+<section class="mt-6">
+	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Import TV Time</h2>
+	<div class="space-y-3 rounded-2xl bg-card p-4">
+		<p class="text-xs text-mut">
+			Déposez le zip de l'export GDPR reçu de TV Time (ou ses fichiers CSV) : séries suivies, films
+			et historique complet sont ajoutés au profil « {data.profileName} », sans toucher aux autres
+			profils. Relançable sans créer de doublons.
+		</p>
+		<form
+			method="POST"
+			action="?/importTvTime"
+			enctype="multipart/form-data"
+			use:enhance={() => {
+				tvtimeStarting = true;
+				return async ({ update }) => {
+					await update();
+					tvtimeStarting = false;
+					await refreshTvTimeJob();
+				};
+			}}
+			class="flex flex-wrap items-center gap-2"
+		>
+			<input
+				type="file"
+				name="gdpr"
+				accept=".zip,.csv"
+				multiple
+				bind:files={tvtimeFiles}
+				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+			/>
+			<button
+				disabled={!tvtimeFiles?.length || tvtimeStarting || tvtimeJob?.running}
+				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
+			>
+				{tvtimeJob?.running ? 'Import en cours…' : 'Importer'}
+			</button>
+		</form>
+		{#if form?.tvtimeError}
+			<p class="text-sm text-red-400">{form.tvtimeError}</p>
+		{/if}
+		{#if tvtimeJob?.running}
+			<div class="space-y-1.5">
+				<div class="flex items-center justify-between gap-3 text-xs text-mut">
+					<span class="truncate">
+						{TVTIME_PHASES[tvtimeJob.progress.phase] ?? tvtimeJob.progress.phase}{tvtimeJob.progress.label
+							? ` · ${tvtimeJob.progress.label}`
+							: ''}
+					</span>
+					{#if tvtimeJob.progress.total > 0}
+						<span class="shrink-0 tabular-nums">{tvtimeJob.progress.current}/{tvtimeJob.progress.total}</span>
+					{/if}
+				</div>
+				<div class="h-2 overflow-hidden rounded-full bg-line/60">
+					<div
+						class="h-full rounded-full bg-brand transition-all"
+						style="width: {tvtimeJob.progress.total > 0
+							? (tvtimeJob.progress.current / tvtimeJob.progress.total) * 100
+							: 0}%"
+					></div>
+				</div>
+				{#if tvtimeJob.userId !== data.profileId}
+					<p class="text-xs text-mut">Import lancé pour le profil « {tvtimeJob.userName} ».</p>
+				{/if}
+			</div>
+		{:else if tvtimeJob?.error}
+			<p class="text-sm text-red-400">✗ Import échoué : {tvtimeJob.error}</p>
+		{:else if tvtimeReport}
+			<p class="text-sm text-ok">
+				✓ Import terminé{tvtimeJob && tvtimeJob.userId !== data.profileId
+					? ` (profil « ${tvtimeJob.userName} »)`
+					: ''} :
+				{tvtimeReport.showsImported + tvtimeReport.showsSkipped} séries,
+				{tvtimeReport.moviesImported + tvtimeReport.moviesSkipped} films,
+				{(tvtimeReport.watchesInserted + tvtimeReport.movieWatchesInserted).toLocaleString('fr-FR')}
+				visionnages ajoutés ({formatDuration(tvtimeReport.totalMinutes)} au total).
+			</p>
+			{#if tvtimeIssues > 0}
+				<details class="text-xs text-mut">
+					<summary class="cursor-pointer select-none">⚠ Éléments à vérifier</summary>
+					<div class="mt-2 space-y-2">
+						{#if tvtimeReport.unmappedShows.length}
+							<p>
+								<strong>{tvtimeReport.unmappedShows.length} séries introuvables sur TMDB</strong>
+								(à ajouter via la recherche) :
+								{tvtimeReport.unmappedShows.map((s) => s.name).join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.unmappedMovies.length}
+							<p>
+								<strong>{tvtimeReport.unmappedMovies.length} films introuvables sur TMDB</strong>
+								(à ajouter via la recherche) :
+								{tvtimeReport.unmappedMovies
+									.map((m) => `${m.name}${m.releaseYear ? ` (${m.releaseYear})` : ''}`)
+									.join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.failedShows.length}
+							<p>
+								<strong>{tvtimeReport.failedShows.length} séries en échec</strong>
+								(relancez l'import) : {tvtimeReport.failedShows.map((f) => f.name).join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.failedMovies.length}
+							<p>
+								<strong>{tvtimeReport.failedMovies.length} films en échec</strong>
+								(relancez l'import) : {tvtimeReport.failedMovies.map((f) => f.name).join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.matchedByName.length}
+							<p>
+								<strong>{tvtimeReport.matchedByName.length} séries mappées par nom</strong>
+								(id TVDB inconnu de TMDB, à vérifier) :
+								{tvtimeReport.matchedByName.map((s) => `« ${s.name} » → « ${s.tmdbName} »`).join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.matchedMoviesByName.length}
+							<p>
+								<strong>{tvtimeReport.matchedMoviesByName.length} films mappés par nom</strong>
+								(à vérifier) :
+								{tvtimeReport.matchedMoviesByName
+									.map((m) => `« ${m.name} » → « ${m.tmdbTitle} »`)
+									.join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.unmatchedEpisodes.length}
+							<p>
+								<strong>Visionnages sans épisode correspondant :</strong>
+								{tvtimeReport.unmatchedEpisodes.map((s) => `${s.name} (${s.count})`).join(', ')}
+							</p>
+						{/if}
+						{#if tvtimeReport.unmatchedMovieWatches.length}
+							<p>
+								<strong>Visionnages sans film correspondant :</strong>
+								{tvtimeReport.unmatchedMovieWatches.map((m) => `${m.name} (${m.count})`).join(', ')}
+							</p>
+						{/if}
+					</div>
+				</details>
+			{/if}
 		{/if}
 	</div>
 </section>

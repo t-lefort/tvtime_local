@@ -20,14 +20,16 @@ Shows still in production are refreshed automatically every night (new seasons, 
 
 ## Importing TV Time data (GDPR export)
 
-With Node installed (one-time, ~2 min):
+**From the app** (easiest): Profile → **Import TV Time** → drop the GDPR zip received from TV Time (or its CSV files). The import runs in the background with a progress bar and ends with a report; the data is added to the active profile without touching the other profiles.
+
+**From the command line**, with Node installed:
 
 ```sh
 npm install
 npm run import -- "C:\path\to\gdpr-data" "Profile name"
 ```
 
-The data is attached to the given profile (created if needed; defaults to `Profil 1`). The script imports followed shows (including their "stopped" status), movies to watch, the full watch history for shows + movies with actual dates, and show favorites. It prints a final report (shows/movies not found on TMDB, total time compared against the TV Time reference). It can be re-run without creating duplicates if interrupted.
+The data is attached to the given profile (created if needed; defaults to `Profil 1`). Both ways import followed shows (including their "stopped" status), movies to watch, the full watch history for shows + movies with actual dates, and show favorites, and end with a report (shows/movies not found on TMDB, total time compared against the TV Time reference). The import can be re-run without creating duplicates if interrupted.
 
 ## Running
 
@@ -46,11 +48,7 @@ docker compose up -d --build
 
 The app listens on `http://localhost:3000`. The SQLite database is persisted in `./data/`.
 
-To import the GDPR export from inside the container: uncomment the `gdpr` volume in `docker-compose.yml`, then:
-
-```sh
-docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
-```
+To import the TV Time GDPR export, use Profile → **Import TV Time** in the app. (The CLI alternative from inside the container: uncomment the `gdpr` volume in `docker-compose.yml`, then `docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr`.)
 
 ## Configuration (`.env`)
 

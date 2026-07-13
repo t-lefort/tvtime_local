@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectMovieImportData, norm } from '../scripts/import-tvtime-utils';
+import { zipSync } from 'fflate';
+import {
+	collectMovieImportData,
+	csvFilesFromUpload,
+	norm
+} from '../src/lib/server/tvtime-import-utils';
+
+test('csvFilesFromUpload retrouve les CSV attendus dans un zip GDPR ou des fichiers isolés', () => {
+	const enc = new TextEncoder();
+	const zip = zipSync({
+		// l'export GDPR range les CSV dans des sous-dossiers
+		'gdpr/followed_tv_show.csv': enc.encode('tv_show_id\n42'),
+		'gdpr/tracking/tracking-prod-records-v2.csv': enc.encode('key\nwatch-episode-1'),
+		'gdpr/autre_fichier.csv': enc.encode('ignoré'),
+		'__MACOSX/followed_tv_show.csv': enc.encode('métadonnées macOS à ignorer')
+	});
+
+	assert.deepEqual(csvFilesFromUpload([{ name: 'tvtime.zip', data: zip }]), {
+		'followed_tv_show.csv': 'tv_show_id\n42',
+		'tracking-prod-records-v2.csv': 'key\nwatch-episode-1'
+	});
+
+	// CSV sélectionnés individuellement, casse du nom indifférente
+	assert.deepEqual(
+		csvFilesFromUpload([
+			{ name: 'Followed_TV_Show.csv', data: enc.encode('tv_show_id\n7') },
+			{ name: 'notes.txt', data: enc.encode('ignoré') }
+		]),
+		{ 'followed_tv_show.csv': 'tv_show_id\n7' }
+	);
+});
 
 test('collectMovieImportData extracts watched, rewatched and watchlist movies', () => {
 	const data = collectMovieImportData([

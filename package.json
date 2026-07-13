@@ -8,11 +8,10 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"start": "node build/index.js",
-		"test": "tsx src/lib/server/tmdb.test.ts",
+		"test": "tsx --test tests/*.test.ts",
 		"db:generate": "drizzle-kit generate",
 		"import": "tsx scripts/import-tvtime.ts",
 		"sync": "tsx scripts/sync.ts",
-		"test": "tsx --test tests/*.test.ts",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
@@ -37,6 +36,7 @@
 		"csv-parse": "^7.0.1",
 		"dotenv": "^17.4.2",
 		"drizzle-orm": "^0.45.2",
+		"fflate": "^0.8.3",
 		"node-cron": "^4.5.0",
 		"tsx": "^4.23.0"
 	}
