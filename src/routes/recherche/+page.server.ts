@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
-import { searchMovie, searchTv } from '$lib/server/tmdb';
+import { searchCompanies, searchMovie, searchPeople, searchTv } from '$lib/server/tmdb';
 import { addOrUpdateShow, followShow } from '$lib/server/shows';
 import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
 import { requireUser } from '$lib/server/users';
@@ -20,16 +20,50 @@ export interface SearchResult {
 	localId: number | null;
 }
 
+/** Suggestion de société de production correspondant à la requête (recherche de films). */
+export interface CompanySuggestion {
+	id: number;
+	name: string;
+	logoPath: string | null;
+}
+
+/** Suggestion de personne (producteur, réalisateur, acteur…) correspondant à la requête. */
+export interface PersonSuggestion {
+	id: number;
+	name: string;
+	knownFor: string | null;
+	profilePath: string | null;
+}
+
+const emptySuggestions = {
+	companies: [] as CompanySuggestion[],
+	people: [] as PersonSuggestion[]
+};
+
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const user = requireUser(locals);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const type = url.searchParams.get('type') === 'films' ? 'films' : 'series';
-	if (!q) return { q, type, results: [] as SearchResult[], error: null };
+	if (!q) return { q, type, results: [] as SearchResult[], error: null, ...emptySuggestions };
 
 	try {
 		let results: SearchResult[];
+		let suggestions = emptySuggestions;
 		if (type === 'films') {
-			const found = await searchMovie(q);
+			const [found, companies, people] = await Promise.all([
+				searchMovie(q),
+				searchCompanies(q),
+				searchPeople(q)
+			]);
+			suggestions = {
+				companies: companies.map((c) => ({ id: c.id, name: c.name, logoPath: c.logo_path })),
+				people: people.map((p) => ({
+					id: p.id,
+					name: p.name,
+					knownFor: p.known_for_department || null,
+					profilePath: p.profile_path
+				}))
+			};
 			const inDb = new Map(
 				db
 					.select({ tmdbId: movies.tmdbId, id: movies.id })
@@ -73,9 +107,15 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				localId: inDb.get(r.id) ?? null
 			}));
 		}
-		return { q, type, results, error: null };
+		return { q, type, results, error: null, ...suggestions };
 	} catch (e) {
-		return { q, type, results: [] as SearchResult[], error: e instanceof Error ? e.message : String(e) };
+		return {
+			q,
+			type,
+			results: [] as SearchResult[],
+			error: e instanceof Error ? e.message : String(e),
+			...emptySuggestions
+		};
 	}
 };
 
