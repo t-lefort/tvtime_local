@@ -14,6 +14,19 @@
 	const isFilms = $derived(data.type === 'films');
 	const preview = $derived(data.results[0] ?? null);
 	const otherResults = $derived(data.results.slice(1));
+	const companies = $derived(data.companies ?? []);
+	const people = $derived(data.people ?? []);
+	const hasSuggestions = $derived(isFilms && (companies.length > 0 || people.length > 0));
+
+	const DEPARTMENT_FR: Record<string, string> = {
+		Acting: 'Acteur / Actrice',
+		Directing: 'Réalisation',
+		Writing: 'Scénario',
+		Production: 'Production',
+		Sound: 'Musique / Son',
+		Camera: 'Image',
+		Editing: 'Montage'
+	};
 
 	$effect(() => {
 		query = data.q;
@@ -111,6 +124,54 @@
 		{data.results.length} résultat{data.results.length > 1 ? 's' : ''} pour « {data.q} »
 	{/if}
 </div>
+
+{#if hasSuggestions}
+	<section class="mb-5 space-y-4">
+		{#if companies.length}
+			<div>
+				<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Sociétés de production</h2>
+				<div class="flex flex-wrap gap-2">
+					{#each companies as company (company.id)}
+						<a
+							href="/societes/{company.id}"
+							class="flex items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
+						>
+							<span class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white">
+								{#if company.logoPath}
+									<img src={tmdbImg(company.logoPath, 'w185')} alt="" class="max-h-full max-w-full object-contain" />
+								{:else}
+									<span class="text-xs">🏢</span>
+								{/if}
+							</span>
+							{company.name}
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
+		{#if people.length}
+			<div>
+				<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Producteurs & personnes</h2>
+				<div class="flex flex-wrap gap-2">
+					{#each people as person (person.id)}
+						<a
+							href="/personnes/{person.id}"
+							class="flex items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
+						>
+							<span class="h-7 w-7 shrink-0 overflow-hidden rounded-full">
+								<Poster path={person.profilePath} alt="" size="w185" fallback="🎭" />
+							</span>
+							<span class="leading-tight">
+								{person.name}
+								{#if person.knownFor}<span class="text-xs font-normal text-mut"> · {DEPARTMENT_FR[person.knownFor] ?? person.knownFor}</span>{/if}
+							</span>
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</section>
+{/if}
 
 {#if data.error}
 	<div class="rounded-xl border border-red-400/30 bg-card p-5 text-center text-sm text-red-300">

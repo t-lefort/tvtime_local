@@ -107,11 +107,19 @@ export interface TmdbProductionCompany {
 	logo_path: string | null;
 }
 
-interface TmdbPersonSummary {
+export interface TmdbPersonSummary {
 	id: number;
 	name: string;
 	known_for_department: string;
+	profile_path: string | null;
 	popularity: number;
+}
+
+export interface TmdbCompanySummary {
+	id: number;
+	name: string;
+	logo_path: string | null;
+	origin_country?: string;
 }
 
 export interface TmdbCastMember {
@@ -374,6 +382,27 @@ export async function searchMovie(query: string): Promise<TmdbMovieSummary[]> {
 	const creditedMovies = peopleCredits.flatMap(movieCreditsSearchResults);
 
 	return mergeMovieSearchResults(movies.results, creditedMovies);
+}
+
+/** Nombre de suggestions (sociétés / personnes) proposées dans la recherche. */
+const MAX_SEARCH_SUGGESTIONS = 8;
+
+/** Sociétés de production dont le nom correspond à la requête, les plus notoires d'abord. */
+export async function searchCompanies(query: string): Promise<TmdbCompanySummary[]> {
+	const res = await tmdb<{ results: TmdbCompanySummary[] }>('/search/company', { query });
+	return res.results.slice(0, MAX_SEARCH_SUGGESTIONS);
+}
+
+/** Personnes (réalisateurs, producteurs, acteurs…) dont le nom correspond à la requête. */
+export async function searchPeople(query: string): Promise<TmdbPersonSummary[]> {
+	const res = await tmdb<{ results: TmdbPersonSummary[] }>('/search/person', {
+		query,
+		include_adult: false
+	});
+	return res.results
+		.slice()
+		.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+		.slice(0, MAX_SEARCH_SUGGESTIONS);
 }
 
 async function getPersonMovieCredits(personId: number): Promise<TmdbPersonMovieCredits> {
