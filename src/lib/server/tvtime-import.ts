@@ -3,10 +3,14 @@
  * (scripts/import-tvtime.ts) et à la page profil (import depuis l'interface).
  *
  * Règles :
- * - followed_tv_show.csv  : active=1 → série suivie (archived selon le flag "archived" = arrêtée) ;
- *                           active=0 → série désuivie dans TV Time → importée comme "arrêtée"
+ * - followed_tv_show.csv  : active=1 → série suivie ; active=0 → série désuivie dans TV Time.
+ *   Le drapeau "arrêtée" n'est conservé que si TMDB déclare la série réellement terminée
+ *   (statut Ended/Canceled). TV Time archive/désactive une série dès qu'on a vu tous ses
+ *   épisodes, même si elle est encore en production : on ne veut pas la marquer arrêtée
+ *   dans ce cas (issue #16), elle reste suivie (état « à jour »).
  * - tracking-prod-records-v2.csv : lignes watch-episode / rewatch-episode = historique complet
- *   (les séries présentes uniquement dans l'historique sont importées comme "arrêtées")
+ *   (les séries présentes uniquement dans l'historique sont candidates au statut "arrêtée",
+ *   sous la même condition TMDB ci-dessus)
  * - tracking-prod-records.csv et tracking-prod-records-v2.csv : lignes films watch / rewatch /
  *   watchlist = collection films et historique complet
  * - user_show_special_status.csv : favorite → favori
@@ -81,6 +85,15 @@ interface WatchEvent {
 	episodeNumber: number;
 	watchedAt: string;
 	seriesName: string;
+}
+
+/**
+ * Une série n'est « arrêtée » que si TMDB la déclare réellement terminée.
+ * TV Time archive/désactive une série dès qu'on a vu tous ses épisodes (même
+ * en production) ; ce n'est pas un vrai arrêt, on ne la grise donc pas (issue #16).
+ */
+function isEndedStatus(status: string | null | undefined): boolean {
+	return status === 'Ended' || status === 'Canceled';
 }
 
 export interface TvTimeImportHooks {
@@ -202,14 +215,14 @@ export async function runTvTimeImport(
 	}
 
 	async function importShow(item: ShowToImport): Promise<void> {
-		const followOpts = {
-			archived: item.archived,
-			favorite: favoriteTvdbIds.has(item.tvdbId),
-			followedAt: item.followedAt
-		};
+		const favorite = favoriteTvdbIds.has(item.tvdbId);
 		const existing = getShowByTvdbId(item.tvdbId);
 		if (existing) {
-			followShow(userId, existing.id, followOpts);
+			followShow(userId, existing.id, {
+				archived: item.archived && isEndedStatus(existing.tmdbStatus),
+				favorite,
+				followedAt: item.followedAt
+			});
 			tvdbToLocalId.set(item.tvdbId, existing.id);
 			skipped++;
 			return;
@@ -220,11 +233,13 @@ export async function runTvTimeImport(
 			return;
 		}
 		const show = await addOrUpdateShow(tmdbId, { tvdbId: item.tvdbId });
-		followShow(userId, show.id, followOpts);
+		// On ne conserve « arrêtée » que si TMDB confirme la série terminée (issue #16).
+		const archived = item.archived && isEndedStatus(show.tmdbStatus);
+		followShow(userId, show.id, { archived, favorite, followedAt: item.followedAt });
 		tvdbToLocalId.set(item.tvdbId, show.id);
 		imported++;
 		onLog(
-			`✓ [${imported + skipped}/${showsToImport.size}] ${show.name} (${item.source}${item.archived ? ', arrêtée' : ''})`
+			`✓ [${imported + skipped}/${showsToImport.size}] ${show.name} (${item.source}${archived ? ', arrêtée' : ''})`
 		);
 	}
 
