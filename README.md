@@ -8,7 +8,7 @@ Self-hosted web app for tracking TV shows **and movies**, designed as a minimali
 - **Movies**: collection with filters (to watch, watched, favorites), mark watched/unwatched, rewatches, favorite
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **Search**: add shows and movies via TMDB (French metadata)
-- **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page); `AUTH_PASSWORD` still protects the whole instance
+- **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page)
 - **Profile**: total screen time (shows + movies), watch counts per month, genre breakdown, ranking of watched shows
 
 Shows still in production are refreshed automatically every night (new seasons, air dates), along with the streaming platforms of the whole library. Installable as a PWA on mobile.
@@ -16,7 +16,7 @@ Shows still in production are refreshed automatically every night (new seasons, 
 ## Prerequisites
 
 1. **A TMDB API key** (free): create an account on [themoviedb.org](https://www.themoviedb.org/signup), then go to [Settings → API](https://www.themoviedb.org/settings/api). Both the v3 key and the v4 token ("Read Access Token") work.
-2. Copy `.env.example` to `.env` and set `TMDB_API_KEY` (and `AUTH_PASSWORD` if the app is exposed to the internet).
+2. Copy `.env.example` to `.env` and set `TMDB_API_KEY`.
 
 ## Importing TV Time data (GDPR export)
 
@@ -57,7 +57,6 @@ docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
 | Variable | Purpose |
 | --- | --- |
 | `TMDB_API_KEY` | TMDB API key (required) |
-| `AUTH_PASSWORD` | Login password; empty = no authentication (LAN use) |
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
 | `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
@@ -65,7 +64,7 @@ docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr
 ## Deploying to a server (CI + Portainer)
 
 1. **Publish the repository on GitHub**: the CI (`.github/workflows/docker.yml`) builds the image on every push to `master`/`main` and pushes it to `ghcr.io/<user>/tvtimelocal:latest` (no secrets to configure, `GITHUB_TOKEN` is enough).
-2. **Portainer**: Stacks → Add stack → paste `portainer-stack.yml` (replace `YOUR_USERNAME`), set `TMDB_API_KEY`, `AUTH_PASSWORD` and `ORIGIN` in the stack's environment variables. If the ghcr package is private, declare the registry in Portainer → Registries with a GitHub PAT (`read:packages`).
+2. **Portainer**: Stacks → Add stack → paste `portainer-stack.yml` (replace `YOUR_USERNAME`), set `TMDB_API_KEY` and `ORIGIN` in the stack's environment variables. If the ghcr package is private, declare the registry in Portainer → Registries with a GitHub PAT (`read:packages`).
 3. **Transfer your data**: on the local instance, Profile → **Export database** (downloads a `.db` file), then on the server instance, Profile → **Import**. That's it.
 4. Updating: re-pull the image in Portainer ("Recreate" with re-pull) after each push.
 

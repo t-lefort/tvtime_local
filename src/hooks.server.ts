@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
-import { authEnabled, isValidSession } from '$lib/server/auth';
 
 export const init: ServerInit = async () => {
 	if (building) return;
@@ -11,23 +10,13 @@ export const init: ServerInit = async () => {
 };
 
 export const handle: Handle = async ({ event, resolve }) => {
-	if (authEnabled() && event.url.pathname !== '/login') {
-		if (!isValidSession(event.cookies.get('session'))) {
-			redirect(303, '/login');
-		}
-	}
-
 	// Résolution du profil actif (multi-utilisateurs) ; /profils permet d'en choisir un
-	if (event.url.pathname !== '/login') {
-		const { USER_COOKIE, userFromCookie } = await import('$lib/server/users');
-		const user = userFromCookie(event.cookies.get(USER_COOKIE));
-		// Champs sensibles (hash, image) volontairement absents des locals
-		event.locals.user = user ? { id: user.id, name: user.name } : null;
-		if (!event.locals.user && !event.url.pathname.startsWith('/profils')) {
-			redirect(303, '/profils');
-		}
-	} else {
-		event.locals.user = null;
+	const { USER_COOKIE, userFromCookie } = await import('$lib/server/users');
+	const user = userFromCookie(event.cookies.get(USER_COOKIE));
+	// Champs sensibles (hash, image) volontairement absents des locals
+	event.locals.user = user ? { id: user.id, name: user.name } : null;
+	if (!event.locals.user && !event.url.pathname.startsWith('/profils')) {
+		redirect(303, '/profils');
 	}
 
 	return resolve(event);

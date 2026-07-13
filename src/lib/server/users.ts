@@ -5,7 +5,7 @@ import { hashPassword } from './auth';
 import { db } from './db';
 import { users, type User } from './db/schema';
 
-/** Cookie qui mémorise le profil actif (l'accès à l'instance est déjà protégé par AUTH_PASSWORD). */
+/** Cookie qui mémorise le profil actif (signé si le profil a un mot de passe). */
 export const USER_COOKIE = 'user';
 
 export const USER_COOKIE_OPTS = {
@@ -57,7 +57,7 @@ export function deleteUser(id: number): void {
 	db.delete(users).where(eq(users.id, id)).run();
 }
 
-/** Profil actif d'une requête ; hooks.server.ts le garantit hors /login et /profils. */
+/** Profil actif d'une requête ; hooks.server.ts le garantit hors /profils. */
 export function requireUser(locals: App.Locals): { id: number; name: string } {
 	if (!locals.user) redirect(303, '/profils');
 	return locals.user;

@@ -6,7 +6,6 @@ services:
       - '3000:3000'
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
-      - AUTH_PASSWORD=${AUTH_PASSWORD:-}
       # Exact URL used to access the app (required for form submissions outside localhost)
       - ORIGIN=${ORIGIN:-http://localhost:3000}
       - TZ=Europe/Paris

@@ -5,10 +5,8 @@
 	import { page } from '$app/state';
 
 	let { children } = $props();
-	// Pas de navigation avant d'être connecté à un profil (login, sélecteur, connexion profil)
-	const hideNav = $derived(
-		page.url.pathname === '/login' || page.url.pathname.startsWith('/profils')
-	);
+	// Pas de navigation avant d'être connecté à un profil (sélecteur, connexion profil)
+	const hideNav = $derived(page.url.pathname.startsWith('/profils'));
 </script>
 
 <svelte:head>

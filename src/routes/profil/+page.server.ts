@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fail, redirect } from '@sveltejs/kit';
 import Database from 'better-sqlite3';
-import { authEnabled } from '$lib/server/auth';
 import { db } from '$lib/server/db';
 import { getProfileStats } from '$lib/server/queries';
 import {
@@ -61,17 +60,11 @@ export const load: PageServerLoad = ({ locals }) => {
 				minutesWatched: s.minutesWatched,
 				watchedCount: s.watchedCount,
 				state: s.state
-			})),
-		authEnabled: authEnabled()
+			}))
 	};
 };
 
 export const actions: Actions = {
-	logout: async ({ cookies }) => {
-		cookies.delete('session', { path: '/' });
-		redirect(303, '/login');
-	},
-
 	rename: async ({ request, locals }) => {
 		const user = requireUser(locals);
 		const name = String((await request.formData()).get('name') ?? '').trim();

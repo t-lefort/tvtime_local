@@ -4,7 +4,7 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
-			/** Profil actif ; garanti non nul par hooks.server.ts hors /login et /profils. */
+			/** Profil actif ; garanti non nul par hooks.server.ts hors /profils. */
 			user: { id: number; name: string } | null;
 		}
 		// interface PageData {}
