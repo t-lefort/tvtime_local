@@ -149,16 +149,26 @@ const MAX_CAST = 15;
 export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[] {
 	const cast = credits?.cast;
 	if (!cast?.length) return [];
-	return cast
-		.slice()
-		.sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
-		.slice(0, MAX_CAST)
-		.map((c) => ({
+	// Un acteur peut apparaître plusieurs fois (plusieurs rôles) : on déduplique par id
+	// en fusionnant les personnages, pour garder des clés uniques côté affichage.
+	const byId = new Map<number, StoredCastMember>();
+	for (const c of cast.slice().sort((a, b) => (a.order ?? 999) - (b.order ?? 999))) {
+		const existing = byId.get(c.id);
+		if (existing) {
+			if (c.character && !existing.character?.includes(c.character)) {
+				existing.character = existing.character ? `${existing.character} / ${c.character}` : c.character;
+			}
+			continue;
+		}
+		if (byId.size >= MAX_CAST) continue;
+		byId.set(c.id, {
 			id: c.id,
 			name: c.name,
 			character: c.character || null,
 			profilePath: c.profile_path
-		}));
+		});
+	}
+	return [...byId.values()];
 }
 
 /** Membre d'équipe stocké en base (colonne crew, JSON) : réalisation et production. */
