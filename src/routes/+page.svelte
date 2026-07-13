@@ -23,6 +23,7 @@
 	<title>Fil — TV Time local</title>
 </svelte:head>
 
+<div class="mx-auto max-w-2xl">
 <h1 class="mb-4 text-2xl font-bold">Fil</h1>
 
 <div class="mb-5 flex border-b border-line" role="tablist">
@@ -135,3 +136,4 @@
 		{/each}
 	</div>
 {/if}
+</div>

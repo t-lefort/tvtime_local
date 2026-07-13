@@ -42,7 +42,7 @@
 		{/if}
 	</div>
 {:else}
-	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4">
+	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
 		{#each data.movies as movie (movie.id)}
 			<a href="/films/{movie.tmdbId}" class="group">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">

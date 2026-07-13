@@ -75,6 +75,7 @@
 	<title>Recherche — TV Time local</title>
 </svelte:head>
 
+<div class="mx-auto max-w-2xl">
 <h1 class="mb-4 text-2xl font-bold">Recherche</h1>
 
 <div class="mb-4 flex gap-2">
@@ -262,3 +263,4 @@
 <p class="mt-8 text-center text-[11px] text-mut/70">
 	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>
 </p>
+</div>
