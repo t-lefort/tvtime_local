@@ -139,7 +139,7 @@
 			</div>
 		</a>
 		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
-			<a href={previewHref} class="w-22 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
+			<a href={previewHref} class="w-22 shrink-0 self-start overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
 				<div class="aspect-[2/3]">
 					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilms ? 'film' : 'TV'} />
 				</div>
