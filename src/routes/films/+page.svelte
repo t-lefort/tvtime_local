@@ -10,6 +10,9 @@
 		{ key: 'vus', label: 'Vus' },
 		{ key: 'favoris', label: 'Favoris' }
 	];
+
+	const aVoir = $derived(data.movies.filter((m) => m.watchCount === 0));
+	const vus = $derived(data.movies.filter((m) => m.watchCount > 0));
 </script>
 
 <svelte:head>
@@ -42,28 +45,43 @@
 		{/if}
 	</div>
 {:else}
-	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-		{#each data.movies as movie (movie.id)}
-			<a href="/films/{movie.tmdbId}" class="group">
-				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
-					<Poster path={movie.posterPath} alt={movie.title} size="w342" fallback="🎬" />
-					{#if movie.favorite}
-						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
-					{/if}
-					{#if movie.watchCount > 0}
-						<span
-							class="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-brand text-brand-ink"
-							title="Vu"
-						>
-							<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M4 12.5l5 5L20 6.5" />
-							</svg>
-						</span>
-					{/if}
-				</div>
-				<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{movie.title}</p>
-				<p class="text-xs text-mut">{yearOf(movie.releaseDate)}</p>
-			</a>
-		{/each}
-	</div>
+	{#snippet grid(movies: typeof data.movies)}
+		<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
+			{#each movies as movie (movie.id)}
+				<a href="/films/{movie.tmdbId}" class="group">
+					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
+						<Poster path={movie.posterPath} alt={movie.title} size="w342" fallback="🎬" />
+						{#if movie.favorite}
+							<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
+						{/if}
+						{#if movie.watchCount > 0}
+							<span
+								class="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-brand text-brand-ink"
+								title="Vu"
+							>
+								<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M4 12.5l5 5L20 6.5" />
+								</svg>
+							</span>
+						{/if}
+					</div>
+					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{movie.title}</p>
+					<p class="text-xs text-mut">{yearOf(movie.releaseDate)}</p>
+				</a>
+			{/each}
+		</div>
+	{/snippet}
+
+	{#if aVoir.length > 0}
+		<section class="mb-8">
+			<h2 class="mb-3 text-lg font-semibold">À voir <span class="text-mut">· {aVoir.length}</span></h2>
+			{@render grid(aVoir)}
+		</section>
+	{/if}
+	{#if vus.length > 0}
+		<section class="mb-8">
+			<h2 class="mb-3 text-lg font-semibold">Vus <span class="text-mut">· {vus.length}</span></h2>
+			{@render grid(vus)}
+		</section>
+	{/if}
 {/if}
