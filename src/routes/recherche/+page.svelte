@@ -97,7 +97,6 @@
 	<title>Recherche — TV Time local</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl">
 <h1 class="mb-4 text-2xl font-bold">Recherche</h1>
 
 <div class="mb-4 flex gap-2">
@@ -123,7 +122,7 @@
 		oninput={(event) => scheduleSearch(event.currentTarget.value)}
 		placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
 		autocomplete="off"
-		class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+		class="w-full max-w-2xl rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
 	/>
 </form>
 
@@ -197,7 +196,9 @@
 	</div>
 {:else if preview}
 	{@const previewHref = resultHref(preview)}
-	<section class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70">
+	<!-- Deux colonnes sur grand écran, mais seulement s'il y a de quoi remplir la seconde -->
+	<div class={otherResults.length ? 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-6' : ''}>
+	<section class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70 lg:sticky lg:top-5 lg:mb-0">
 		<a href={previewHref} class="group block">
 			<div class="relative h-30 bg-card-hover sm:h-36">
 				{#if preview.backdropPath}
@@ -272,6 +273,7 @@
 	</section>
 
 	{#if otherResults.length}
+		<div class="min-w-0">
 		<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Autres résultats</h2>
 		<ul class="space-y-2">
 			{#each otherResults as result (result.tmdbId)}
@@ -323,7 +325,9 @@
 				</li>
 			{/each}
 		</ul>
+		</div>
 	{/if}
+	</div>
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
 		Cherchez {isFilms ? 'un film' : 'une série'} pour l'ajouter à votre bibliothèque.
@@ -333,4 +337,3 @@
 <p class="mt-8 text-center text-[11px] text-mut/70">
 	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>
 </p>
-</div>
