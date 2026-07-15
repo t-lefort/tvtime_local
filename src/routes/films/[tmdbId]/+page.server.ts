@@ -7,11 +7,15 @@ import { addOrUpdateMovie, collectMovie, getUserMovie, uncollectMovie } from '$l
 import { requireUser } from '$lib/server/users';
 import {
 	extractCast,
+	extractCollection,
 	extractCompanies,
 	extractCrew,
 	extractProviders,
+	getCollectionInfo,
 	getMovieDetails,
+	type CollectionInfo,
 	type StoredCastMember,
+	type StoredCollection,
 	type StoredCompany,
 	type StoredCrewMember,
 	type StoredProviders
@@ -22,6 +26,20 @@ function tmdbIdFromParam(value: string): number {
 	const tmdbId = Number(value);
 	if (!Number.isInteger(tmdbId) || tmdbId <= 0) error(404, 'Film introuvable');
 	return tmdbId;
+}
+
+/** Position d'un film dans sa saga, ou null (film hors saga ou API indisponible). */
+async function collectionInfo(
+	collection: StoredCollection | null,
+	tmdbId: number
+): Promise<CollectionInfo | null> {
+	if (!collection) return null;
+	try {
+		return await getCollectionInfo(collection, tmdbId);
+	} catch {
+		// Saga indisponible (API) : on affiche au moins le nom, sans la position
+		return { id: collection.id, name: collection.name, position: 0, total: 0 };
+	}
 }
 
 /** Film présent dans la collection du profil, sinon 404. */
@@ -44,16 +62,24 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		let cast = JSON.parse(local.cast ?? '[]') as StoredCastMember[];
 		let crew = JSON.parse(local.crew ?? '[]') as StoredCrewMember[];
 		let companies = JSON.parse(local.productionCompanies ?? '[]') as StoredCompany[];
-		if (!cast.length || local.crew === null || local.productionCompanies === null) {
+		let collection = JSON.parse(local.collection ?? 'null') as StoredCollection | null;
+		if (
+			!cast.length ||
+			local.crew === null ||
+			local.productionCompanies === null ||
+			local.collection === null
+		) {
 			const details = await getMovieDetails(tmdbId);
 			if (!cast.length) cast = extractCast(details.credits);
 			crew = extractCrew(details.credits);
 			companies = extractCompanies(details.production_companies);
+			collection = extractCollection(details.belongs_to_collection);
 			db.update(movies)
 				.set({
 					cast: cast.length ? JSON.stringify(cast) : local.cast,
 					crew: JSON.stringify(crew),
-					productionCompanies: JSON.stringify(companies)
+					productionCompanies: JSON.stringify(companies),
+					collection: JSON.stringify(collection)
 				})
 				.where(eq(movies.id, local.id))
 				.run();
@@ -79,7 +105,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 					: null,
 				cast,
 				crew,
-				companies
+				companies,
+				collection: await collectionInfo(collection, tmdbId)
 			}
 		};
 	}
@@ -104,7 +131,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			providers: extractProviders(details['watch/providers']),
 			cast: extractCast(details.credits),
 			crew: extractCrew(details.credits),
-			companies: extractCompanies(details.production_companies)
+			companies: extractCompanies(details.production_companies),
+			collection: await collectionInfo(extractCollection(details.belongs_to_collection), tmdbId)
 		}
 	};
 };

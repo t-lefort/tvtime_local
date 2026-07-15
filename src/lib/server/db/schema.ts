@@ -120,7 +120,9 @@ export const movies = sqliteTable('movies', {
 	// Équipe principale : réalisation et production (JSON StoredCrewMember[], via TMDB)
 	crew: text('crew'),
 	// Sociétés de production (JSON StoredCompany[], via TMDB)
-	productionCompanies: text('production_companies')
+	productionCompanies: text('production_companies'),
+	// Saga / collection (JSON StoredCollection ou 'null' ; NULL = pas encore récupéré)
+	collection: text('collection')
 });
 
 // Présence d'un film dans la collection d'un profil
