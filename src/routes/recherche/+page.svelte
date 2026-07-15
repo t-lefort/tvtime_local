@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import Poster from '$lib/components/Poster.svelte';
@@ -29,9 +30,17 @@
 	};
 
 	$effect(() => {
-		query = data.q;
-		queuedQuery = data.q;
-		searching = false;
+		const q = data.q;
+		untrack(() => {
+			searching = false;
+			// Si cette navigation est le résultat d'une recherche que l'on a nous-mêmes
+			// déclenchée (frappe débouncée), on laisse le champ intact : sinon le trim
+			// côté serveur écraserait ce que l'utilisateur vient de taper (espace en fin,
+			// caractères ajoutés pendant la navigation…).
+			if (q === queuedQuery) return;
+			query = q;
+			queuedQuery = q;
+		});
 	});
 
 	function searchUrl(type = data.type, q = query) {
