@@ -3,7 +3,7 @@
 	import { formatDateShort, yearOf } from '$lib/format';
 	import type { PersonCredit } from '$lib/server/tmdb';
 
-	type CreditWithLocal = PersonCredit & { localId: number | null };
+	type CreditWithLocal = PersonCredit & { localId: number | null; watched: boolean };
 
 	let { data } = $props();
 	const person = $derived(data.person);
@@ -72,9 +72,19 @@
 				<a href={href} class="group block">
 					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card ring-1 ring-line group-hover:ring-brand">
 						<Poster path={credit.posterPath} alt={credit.title} size="w342" {fallback} />
-						{#if credit.localId}
-							<span class="absolute top-1 right-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-ink">
+						{#if credit.watched || (kind === 'series' && credit.localId)}
+							<span
+								class="absolute top-1 right-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-ink"
+								title="Vu"
+							>
 								✓
+							</span>
+						{:else if kind === 'films' && credit.localId}
+							<span
+								class="absolute top-1 right-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold text-mut ring-1 ring-line"
+								title="À voir"
+							>
+								＋
 							</span>
 						{/if}
 					</div>
