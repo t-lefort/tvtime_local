@@ -241,7 +241,7 @@
 				accept="image/png,image/jpeg,image/webp,image/gif"
 				bind:files={avatarFile}
 				onchange={prepareAvatar}
-				class="max-w-full min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+				class="w-full min-w-0 basis-full text-sm text-mut sm:w-auto sm:flex-1 sm:basis-0 file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button
 				disabled={!avatarFile?.length}
