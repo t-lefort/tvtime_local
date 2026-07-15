@@ -31,6 +31,7 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 		backdropPath: details.backdrop_path,
 		firstAirDate: details.first_air_date || null,
 		tmdbStatus: details.status,
+		voteAverage: details.vote_average ?? null,
 		genres: JSON.stringify(details.genres.map((g) => g.name)),
 		episodeRunTime: details.episode_run_time?.[0] ?? null,
 		watchProviders: providers ? JSON.stringify(providers) : null,

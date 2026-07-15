@@ -159,7 +159,7 @@ export function getShowsWithProgress(
 	const rows = db.all<Record<string, unknown>>(sql`
 		SELECT s.id, s.tmdb_id AS tmdbId, s.tvdb_id AS tvdbId, s.name, s.original_name AS originalName,
 			s.overview, s.poster_path AS posterPath, s.backdrop_path AS backdropPath,
-			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.genres,
+			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.vote_average AS voteAverage, s.genres,
 			s.episode_run_time AS episodeRunTime, us.followed_at AS followedAt,
 			us.archived, us.favorite, s.last_synced_at AS lastSyncedAt,
 			s.watch_providers AS watchProviders, s.cast,
@@ -215,7 +215,7 @@ export function getMoviesWithWatch(
 	const rows = db.all<Record<string, unknown>>(sql`
 		SELECT m.id, m.tmdb_id AS tmdbId, m.title, m.original_title AS originalTitle,
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
-			m.release_date AS releaseDate, m.runtime, m.genres, um.added_at AS addedAt,
+			m.release_date AS releaseDate, m.runtime, m.vote_average AS voteAverage, m.genres, um.added_at AS addedAt,
 			um.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
 			m.crew, m.production_companies AS productionCompanies,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id AND w.user_id = ${userId}) AS watchCount,

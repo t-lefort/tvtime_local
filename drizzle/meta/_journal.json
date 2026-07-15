@@ -36,6 +36,13 @@
       "when": 1783850276837,
       "tag": "0004_strong_brother_voodoo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784105720381,
+      "tag": "0005_striped_the_santerians",
+      "breakpoints": true
     }
   ]
 }
