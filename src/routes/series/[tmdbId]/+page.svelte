@@ -57,7 +57,13 @@
 			{#if show.archived}· <span class="text-brand">Arrêtée</span>{/if}
 		</p>
 		{#if show.genres.length}
-			<p class="mt-0.5 truncate text-xs text-mut">{show.genres.join(' · ')}</p>
+			<p class="mt-0.5 truncate text-xs text-mut">
+				{#each show.genres as genre, i (genre)}{#if i > 0} · {/if}<a
+						href="/genres/{encodeURIComponent(genre)}"
+						class="hover:text-brand hover:underline"
+						title="Explorer le genre {genre}">{genre}</a
+					>{/each}
+			</p>
 		{/if}
 	</div>
 </div>

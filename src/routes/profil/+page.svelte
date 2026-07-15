@@ -182,7 +182,11 @@
 		<div class="space-y-2.5 rounded-2xl bg-card p-4">
 			{#each data.perGenre as g (g.genre)}
 				<div class="flex items-center gap-3">
-					<span class="w-32 shrink-0 truncate text-sm">{g.genre}</span>
+					<a
+						href="/genres/{encodeURIComponent(g.genre)}"
+						class="w-32 shrink-0 truncate text-sm hover:text-brand hover:underline"
+						title="Explorer le genre {g.genre}">{g.genre}</a
+					>
 					<div class="h-2 flex-1 overflow-hidden rounded-full bg-line/60">
 						<div class="h-full rounded-full bg-brand" style="width: {(g.minutes / maxGenre) * 100}%"></div>
 					</div>
