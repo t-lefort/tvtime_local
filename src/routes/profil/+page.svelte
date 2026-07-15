@@ -316,10 +316,10 @@
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Données</h2>
 	<div class="space-y-3 rounded-2xl bg-card p-4">
-		<div class="flex flex-wrap items-center gap-2">
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
 			<a
 				href="/profil/export"
-				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90"
+				class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-center text-sm font-semibold text-brand-ink hover:opacity-90 sm:w-auto"
 			>
 				⬇ Exporter la base
 			</a>
@@ -336,18 +336,18 @@
 					importing = false;
 				};
 			}}
-			class="flex flex-wrap items-center gap-2"
+			class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
 		>
 			<input
 				type="file"
 				name="db"
 				accept=".db,application/vnd.sqlite3,application/x-sqlite3"
 				bind:files={importFile}
-				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+				class="min-w-0 max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button
 				disabled={!importFile?.length || importing}
-				class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink disabled:opacity-40"
+				class="w-full shrink-0 rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink disabled:opacity-40 sm:w-auto"
 			>
 				{importing ? 'Import…' : 'Importer (remplace les données actuelles)'}
 			</button>
@@ -383,7 +383,7 @@
 					await refreshTvTimeJob();
 				};
 			}}
-			class="flex flex-wrap items-center gap-2"
+			class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
 		>
 			<input
 				type="file"
@@ -391,11 +391,11 @@
 				accept=".zip,.csv"
 				multiple
 				bind:files={tvtimeFiles}
-				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+				class="min-w-0 max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button
 				disabled={!tvtimeFiles?.length || tvtimeStarting || tvtimeJob?.running}
-				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
+				class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40 sm:w-auto"
 			>
 				{tvtimeJob?.running ? 'Import en cours…' : 'Importer'}
 			</button>

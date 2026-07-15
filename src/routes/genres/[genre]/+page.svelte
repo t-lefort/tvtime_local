@@ -64,10 +64,10 @@
 	<h2 class="mt-6 mb-3 text-sm font-semibold tracking-wide text-mut uppercase">
 		Films ({data.movies.length})
 	</h2>
-	<div class="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
 		{#each data.movies as movie (movie.tmdbId)}
 			<a href="/films/{movie.tmdbId}" class="group block">
-				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card ring-1 ring-line group-hover:ring-brand">
+				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 					<Poster path={movie.posterPath} alt={movie.title} size="w342" fallback="🎬" />
 					{#if movie.favorite}
 						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
@@ -78,10 +78,8 @@
 						</span>
 					{/if}
 				</div>
-				<p class="mt-1 line-clamp-2 text-xs font-medium leading-tight group-hover:text-brand">
-					{movie.title}
-				</p>
-				<p class="text-[11px] text-mut">{yearOf(movie.releaseDate)}</p>
+				<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{movie.title}</p>
+				<p class="text-xs text-mut">{yearOf(movie.releaseDate)}</p>
 			</a>
 		{/each}
 	</div>
