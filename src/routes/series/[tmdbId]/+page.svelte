@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import BackButton from '$lib/components/BackButton.svelte';
 	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
@@ -35,13 +36,10 @@
 		<div class="h-full w-full bg-card"></div>
 	{/if}
 	<div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/30 to-transparent"></div>
-	<a
-		href={data.backHref}
+	<BackButton
+		fallback={data.backHref}
 		class="absolute top-3 left-3 flex h-9 w-9 items-center justify-center rounded-full bg-bg/70 text-lg backdrop-blur hover:bg-bg"
-		aria-label="Retour"
-	>
-		←
-	</a>
+	/>
 </div>
 
 <div class="relative -mt-16 flex items-end gap-4">
