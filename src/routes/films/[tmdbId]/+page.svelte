@@ -25,9 +25,9 @@
 	<title>{movie.title} — TV Time local</title>
 </svelte:head>
 
-<div class="relative -mx-4 -mt-5 h-44 sm:h-56">
+<div class="relative -mx-4 -mt-5 h-52 sm:h-64 lg:h-72">
 	{#if movie.backdropPath}
-		<img src={tmdbImg(movie.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+		<img src={tmdbImg(movie.backdropPath, 'w780')} alt="" class="h-full w-full object-cover object-top" />
 	{:else}
 		<div class="h-full w-full bg-card"></div>
 	{/if}
