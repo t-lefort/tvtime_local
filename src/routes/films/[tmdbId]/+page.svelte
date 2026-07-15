@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
+	import Rating from '$lib/components/Rating.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { formatDateShort, tmdbImg, yearOf } from '$lib/format';
 
@@ -47,9 +48,12 @@
 	</div>
 	<div class="min-w-0 pb-1">
 		<h1 class="text-xl leading-tight font-bold">{movie.title}</h1>
-		<p class="mt-1 text-sm text-mut">
-			{yearOf(movie.releaseDate)}
-			{#if movie.runtime}· {movie.runtime} min{/if}
+		<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mut">
+			<span>
+				{yearOf(movie.releaseDate)}
+				{#if movie.runtime}· {movie.runtime} min{/if}
+			</span>
+			<Rating value={movie.voteAverage} />
 		</p>
 		{#if movie.genres.length}
 			<p class="mt-0.5 truncate text-xs text-mut">{movie.genres.join(' · ')}</p>

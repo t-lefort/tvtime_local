@@ -8,7 +8,6 @@ import { requireUser } from '$lib/server/users';
 import {
 	extractCast,
 	extractProviders,
-	getCast,
 	getShowDetails,
 	type StoredCastMember,
 	type StoredProviders
@@ -38,13 +37,17 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const local = getShowsWithProgress(user.id, { tmdbId })[0];
 	if (local) {
-		// Complète la distribution en direct pour les séries ajoutées avant cette fonctionnalité
+		// Complète distribution et note TMDB en direct pour les séries ajoutées avant ces fonctionnalités
 		let cast = JSON.parse(local.cast ?? '[]') as StoredCastMember[];
-		if (!cast.length) {
-			cast = await getCast('tv', tmdbId);
-			if (cast.length) {
-				db.update(shows).set({ cast: JSON.stringify(cast) }).where(eq(shows.id, local.id)).run();
-			}
+		let voteAverage = local.voteAverage;
+		if (!cast.length || local.voteAverage === null) {
+			const details = await getShowDetails(tmdbId);
+			if (!cast.length) cast = extractCast(details.credits);
+			voteAverage = details.vote_average ?? null;
+			db.update(shows)
+				.set({ cast: cast.length ? JSON.stringify(cast) : local.cast, voteAverage })
+				.where(eq(shows.id, local.id))
+				.run();
 		}
 
 		const bySeason = new Map<number, EpisodeWithWatch[]>();
@@ -81,6 +84,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 				backdropPath: local.backdropPath,
 				firstAirDate: local.firstAirDate,
 				tmdbStatus: local.tmdbStatus,
+				voteAverage,
 				genres: JSON.parse(local.genres) as string[],
 				archived: local.archived,
 				favorite: local.favorite,
@@ -114,6 +118,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			backdropPath: details.backdrop_path,
 			firstAirDate: details.first_air_date || null,
 			tmdbStatus: details.status,
+			voteAverage: details.vote_average ?? null,
 			genres: details.genres.map((g) => g.name),
 			archived: false,
 			favorite: false,

@@ -3,6 +3,7 @@
 	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import Rating from '$lib/components/Rating.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { formatDateShort, tmdbImg, yearOf } from '$lib/format';
 
@@ -51,10 +52,13 @@
 	</div>
 	<div class="min-w-0 pb-1">
 		<h1 class="text-xl leading-tight font-bold">{show.name}</h1>
-		<p class="mt-1 text-sm text-mut">
+		<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mut">
+			<span>
 			{yearOf(show.firstAirDate)}
 			{#if show.tmdbStatus}· {STATUS_FR[show.tmdbStatus] ?? show.tmdbStatus}{/if}
 			{#if show.archived}· <span class="text-brand">Arrêtée</span>{/if}
+			</span>
+			<Rating value={show.voteAverage} />
 		</p>
 		{#if show.genres.length}
 			<p class="mt-0.5 truncate text-xs text-mut">{show.genres.join(' · ')}</p>
