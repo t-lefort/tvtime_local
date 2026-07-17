@@ -57,6 +57,7 @@ export interface TmdbShowSummary {
 	id: number;
 	name: string;
 	original_name: string;
+	genre_ids?: number[];
 	overview: string;
 	poster_path: string | null;
 	backdrop_path: string | null;
@@ -84,6 +85,7 @@ export interface TmdbMovieSummary {
 	id: number;
 	title: string;
 	original_title: string;
+	genre_ids?: number[];
 	overview: string;
 	poster_path: string | null;
 	backdrop_path: string | null;
@@ -519,6 +521,7 @@ export interface TmdbPersonDetails {
 /** Un titre (film ou série) de la filmographie d'une personne. */
 export interface PersonCredit {
 	tmdbId: number;
+	mediaType: 'movie' | 'tv';
 	title: string;
 	posterPath: string | null;
 	date: string | null;
@@ -531,10 +534,23 @@ export interface PersonFilmography {
 	person: TmdbPersonDetails;
 	movies: PersonCredit[];
 	shows: PersonCredit[];
+	other: PersonCredit[];
 }
 
 /** Nombre de titres conservés par type dans la filmographie d'une personne. */
 const MAX_FILMOGRAPHY = 40;
+
+/** Genres TMDB non fiction relégués après les films et séries dans une filmographie. */
+const NON_FICTION_GENRE_IDS = new Set([
+	99, // Documentaire (film et TV)
+	10763, // Actualités
+	10764, // Téléréalité
+	10767 // Talk-show
+]);
+
+export function isNonFictionGenre(genreIds: readonly number[] | undefined): boolean {
+	return genreIds?.some((genreId) => NON_FICTION_GENRE_IDS.has(genreId)) ?? false;
+}
 
 /** Traductions françaises des postes TMDB affichés comme rôle dans une filmographie. */
 const JOB_FR: Record<string, string> = {
@@ -564,39 +580,54 @@ export async function getPersonFilmography(personId: number): Promise<PersonFilm
 		getPersonTvCredits(personId)
 	]);
 
+	const movieItems = [
+		...movieCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
+		...movieCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
+	];
+	const movieToCredit = ({ summary: c, role }: (typeof movieItems)[number]): PersonCredit => ({
+		tmdbId: c.id,
+		mediaType: 'movie',
+		title: c.title || c.original_title,
+		posterPath: c.poster_path,
+		date: c.release_date || null,
+		role,
+		voteAverage: c.vote_average,
+		popularity: c.popularity ?? 0
+	});
 	const movies = collectFilmography(
-		[
-			...movieCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
-			...movieCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
-		],
-		({ summary: c, role }) => ({
-			tmdbId: c.id,
-			title: c.title || c.original_title,
-			posterPath: c.poster_path,
-			date: c.release_date || null,
-			role,
-			voteAverage: c.vote_average,
-			popularity: c.popularity ?? 0
-		})
+		movieItems.filter(({ summary }) => !isNonFictionGenre(summary.genre_ids)),
+		movieToCredit
+	);
+	const otherMovies = collectFilmography(
+		movieItems.filter(({ summary }) => isNonFictionGenre(summary.genre_ids)),
+		movieToCredit
 	);
 
+	const showItems = [
+		...tvCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
+		...tvCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
+	];
+	const showToCredit = ({ summary: c, role }: (typeof showItems)[number]): PersonCredit => ({
+		tmdbId: c.id,
+		mediaType: 'tv',
+		title: c.name || c.original_name,
+		posterPath: c.poster_path,
+		date: c.first_air_date || null,
+		role,
+		voteAverage: c.vote_average,
+		popularity: c.popularity ?? 0
+	});
 	const shows = collectFilmography(
-		[
-			...tvCredits.cast.map((c) => ({ summary: c, role: c.character || null })),
-			...tvCredits.crew.map((c) => ({ summary: c, role: jobFr(c.job) }))
-		],
-		({ summary: c, role }) => ({
-			tmdbId: c.id,
-			title: c.name || c.original_name,
-			posterPath: c.poster_path,
-			date: c.first_air_date || null,
-			role,
-			voteAverage: c.vote_average,
-			popularity: c.popularity ?? 0
-		})
+		showItems.filter(({ summary }) => !isNonFictionGenre(summary.genre_ids)),
+		showToCredit
 	);
+	const otherShows = collectFilmography(
+		showItems.filter(({ summary }) => isNonFictionGenre(summary.genre_ids)),
+		showToCredit
+	);
+	const other = [...otherMovies, ...otherShows].sort(personCreditSort).slice(0, MAX_FILMOGRAPHY);
 
-	return { person, movies, shows };
+	return { person, movies, shows, other };
 }
 
 /** Dédoublonne par titre (plusieurs rôles → rôles fusionnés), trie et plafonne. */

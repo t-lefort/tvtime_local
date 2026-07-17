@@ -18,7 +18,8 @@
 		Editing: 'Montage'
 	};
 
-	function creditHref(kind: 'films' | 'series', credit: CreditWithLocal): string {
+	function creditHref(credit: CreditWithLocal): string {
+		const kind = credit.mediaType === 'movie' ? 'films' : 'series';
 		return `/${kind}/${credit.tmdbId}`;
 	}
 </script>
@@ -64,22 +65,22 @@
 	<p class="mt-4 line-clamp-6 text-sm leading-relaxed text-mut">{person.biography}</p>
 {/if}
 
-{#snippet grid(kind: 'films' | 'series', credits: CreditWithLocal[], fallback: string)}
+{#snippet grid(credits: CreditWithLocal[])}
 	<ul class="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-		{#each credits as credit (credit.tmdbId)}
-			{@const href = creditHref(kind, credit)}
+		{#each credits as credit (`${credit.mediaType}-${credit.tmdbId}`)}
+			{@const href = creditHref(credit)}
 			<li>
 				<a href={href} class="group block">
 					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card ring-1 ring-line group-hover:ring-brand">
-						<Poster path={credit.posterPath} alt={credit.title} size="w342" {fallback} />
-						{#if credit.watched || (kind === 'series' && credit.localId)}
+						<Poster path={credit.posterPath} alt={credit.title} size="w342" fallback={credit.mediaType === 'movie' ? '🎬' : 'TV'} />
+						{#if credit.watched || (credit.mediaType === 'tv' && credit.localId)}
 							<span
 								class="absolute top-1 right-1 rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-brand-ink"
 								title="Vu"
 							>
 								✓
 							</span>
-						{:else if kind === 'films' && credit.localId}
+						{:else if credit.mediaType === 'movie' && credit.localId}
 							<span
 								class="absolute top-1 right-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold text-mut ring-1 ring-line"
 								title="À voir"
@@ -104,18 +105,25 @@
 	<h2 class="mt-6 mb-3 text-sm font-semibold tracking-wide text-mut uppercase">
 		Films ({data.movies.length})
 	</h2>
-	{@render grid('films', data.movies, '🎬')}
+	{@render grid(data.movies)}
 {/if}
 
 {#if data.shows.length}
 	<h2 class="mt-6 mb-3 text-sm font-semibold tracking-wide text-mut uppercase">
 		Séries ({data.shows.length})
 	</h2>
-	{@render grid('series', data.shows, 'TV')}
+	{@render grid(data.shows)}
 {/if}
 
-{#if !data.movies.length && !data.shows.length}
-	<p class="mt-10 text-center text-sm text-mut">Aucun film ni série trouvé pour cette personne.</p>
+{#if data.other.length}
+	<h2 class="mt-6 mb-3 text-sm font-semibold tracking-wide text-mut uppercase">
+		Documentaires & autres ({data.other.length})
+	</h2>
+	{@render grid(data.other)}
+{/if}
+
+{#if !data.movies.length && !data.shows.length && !data.other.length}
+	<p class="mt-10 text-center text-sm text-mut">Aucun titre trouvé pour cette personne.</p>
 {/if}
 
 <p class="mt-8 text-center text-[11px] text-mut/70">

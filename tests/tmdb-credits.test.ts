@@ -5,6 +5,7 @@ import {
 	extractCollection,
 	extractCompanies,
 	extractCrew,
+	isNonFictionGenre,
 	orderCollectionParts,
 	type TmdbCrewMember,
 	type TmdbMovieSummary
@@ -40,6 +41,15 @@ test('extractCrew caps each job and handles missing credits', () => {
 	assert.equal(extractCrew({ crew: many }).length, 6);
 	assert.deepEqual(extractCrew(undefined), []);
 	assert.deepEqual(extractCrew({ crew: [] }), []);
+});
+
+test('isNonFictionGenre recognizes documentaries and unscripted TV genres', () => {
+	assert.equal(isNonFictionGenre([18, 99]), true);
+	assert.equal(isNonFictionGenre([10763]), true);
+	assert.equal(isNonFictionGenre([10764]), true);
+	assert.equal(isNonFictionGenre([10767]), true);
+	assert.equal(isNonFictionGenre([18, 35]), false);
+	assert.equal(isNonFictionGenre(undefined), false);
 });
 
 test('extractCompanies keeps the first companies with their logo', () => {
