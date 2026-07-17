@@ -274,6 +274,27 @@
 				{/if}
 			</div>
 		</form>
+		<form method="POST" action="?/toggleOverviews" use:enhance class="flex items-center justify-between gap-4 p-4">
+			<div class="min-w-0">
+				<p class="text-sm font-semibold">Masquer les descriptions d'épisodes</p>
+				<p class="mt-0.5 text-xs text-mut">
+					Anti-spoiler : le résumé des épisodes est masqué dans le fil et sur la fiche épisode.
+				</p>
+			</div>
+			<input type="hidden" name="hide" value={data.hideEpisodeOverviews ? '' : '1'} />
+			<button
+				role="switch"
+				aria-checked={data.hideEpisodeOverviews}
+				aria-label="Masquer les descriptions d'épisodes"
+				class="relative h-7 w-12 shrink-0 rounded-full transition-colors
+					{data.hideEpisodeOverviews ? 'bg-brand' : 'bg-line'}"
+			>
+				<span
+					class="absolute top-1 left-1 h-5 w-5 rounded-full bg-bg transition-transform
+						{data.hideEpisodeOverviews ? 'translate-x-5' : ''}"
+				></span>
+			</button>
+		</form>
 		<form method="POST" action="?/setPassword" use:enhance class="space-y-2 p-4">
 			<label for="profil-mdp" class="block text-sm font-semibold">
 				{data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}

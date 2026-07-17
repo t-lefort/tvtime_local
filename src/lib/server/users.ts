@@ -52,6 +52,11 @@ export function setUserAvatar(id: number, avatar: Buffer | null, avatarType: str
 	db.update(users).set({ avatar, avatarType }).where(eq(users.id, id)).run();
 }
 
+/** Active ou désactive le masquage anti-spoiler des descriptions d'épisodes. */
+export function setUserHideEpisodeOverviews(id: number, hide: boolean): void {
+	db.update(users).set({ hideEpisodeOverviews: hide }).where(eq(users.id, id)).run();
+}
+
 /** Supprime le profil et toutes ses données (suivis, collection, historique) via les cascades. */
 export function deleteUser(id: number): void {
 	db.delete(users).where(eq(users.id, id)).run();

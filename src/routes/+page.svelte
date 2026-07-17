@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Poster from '$lib/components/Poster.svelte';
-	import { dayLabel, daysUntil, sxe, tmdbImg } from '$lib/format';
+	import { dayLabel, daysUntil, formatDateShort, sxe, tmdbImg } from '$lib/format';
 	import type { UpcomingItem } from '$lib/server/queries';
 
 	let { data } = $props();
@@ -53,11 +53,11 @@
 			<p>Tout est vu ! Ajoutez une série via la recherche.</p>
 		</div>
 	{:else}
-		<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+		<ul class="space-y-3">
 			{#each data.watchNext as item (item.showId)}
-				<li class="flex items-center gap-3 overflow-hidden rounded-xl bg-card">
-					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3">
-						<div class="h-20 w-32 shrink-0">
+				<li class="flex items-stretch overflow-hidden rounded-xl bg-card">
+					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3 md:gap-5">
+						<div class="h-20 w-32 shrink-0 self-stretch md:h-auto md:min-h-28 md:w-48">
 							{#if item.stillPath}
 								<img
 									src={tmdbImg(item.stillPath, 'w342')}
@@ -71,18 +71,26 @@
 								</div>
 							{/if}
 						</div>
-						<div class="min-w-0 py-2">
-							<p class="truncate font-semibold">{item.showName}</p>
+						<div class="min-w-0 flex-1 py-2 md:py-3">
+							<p class="truncate font-semibold md:text-lg">{item.showName}</p>
 							<p class="truncate text-sm text-mut">
 								<span class="font-medium text-ink/90">{sxe(item.seasonNumber, item.episodeNumber)}</span>
 								{#if item.episodeName}· {item.episodeName}{/if}
 							</p>
 							{#if item.remaining > 1}
-								<p class="mt-0.5 text-xs text-mut">{item.remaining} épisodes à voir</p>
+								<p class="mt-0.5 text-xs text-mut md:hidden">{item.remaining} épisodes à voir</p>
+							{/if}
+							<p class="mt-1 hidden gap-x-4 text-xs text-mut md:flex md:flex-wrap">
+								{#if item.airDate}<span>Diffusé le {formatDateShort(item.airDate)}</span>{/if}
+								{#if item.runtime}<span>{item.runtime} min</span>{/if}
+								{#if item.remaining > 1}<span>{item.remaining} épisodes à voir</span>{/if}
+							</p>
+							{#if item.episodeOverview && !data.hideEpisodeOverviews}
+								<p class="mt-1.5 hidden text-sm text-mut md:line-clamp-2">{item.episodeOverview}</p>
 							{/if}
 						</div>
 					</a>
-					<form method="POST" action="?/watch" use:enhance class="pr-3">
+					<form method="POST" action="?/watch" use:enhance class="flex items-center pr-3 md:pr-5">
 						<input type="hidden" name="episodeId" value={item.episodeId} />
 						<button
 							class="flex h-11 w-11 items-center justify-center rounded-full border-2 border-line text-mut transition-colors hover:border-brand hover:bg-brand hover:text-brand-ink"
@@ -113,11 +121,11 @@
 						{daysUntil(date) === 1 ? '' : `dans ${daysUntil(date)} jours`}
 					</span>
 				</h2>
-				<ul class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+				<ul class="space-y-2">
 					{#each eps as ep (ep.episodeId)}
 						<li>
-							<a href="/series/{ep.showTmdbId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover">
-								<div class="h-14 w-10 shrink-0 overflow-hidden rounded-md">
+							<a href="/series/{ep.showTmdbId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover md:gap-4 md:p-3 md:pr-5">
+								<div class="h-14 w-10 shrink-0 overflow-hidden rounded-md md:h-16 md:w-11">
 									<Poster path={ep.posterPath} size="w185" />
 								</div>
 								<div class="min-w-0 flex-1">
@@ -126,7 +134,13 @@
 										<span class="font-medium text-ink/90">{sxe(ep.seasonNumber, ep.episodeNumber)}</span>
 										{#if ep.episodeName}· {ep.episodeName}{/if}
 									</p>
+									{#if ep.episodeOverview && !data.hideEpisodeOverviews}
+										<p class="mt-0.5 hidden text-sm text-mut md:line-clamp-1">{ep.episodeOverview}</p>
+									{/if}
 								</div>
+								{#if ep.runtime}
+									<span class="hidden shrink-0 text-xs text-mut md:block">{ep.runtime} min</span>
+								{/if}
 							</a>
 						</li>
 					{/each}

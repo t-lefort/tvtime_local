@@ -1,14 +1,15 @@
 import { db } from '$lib/server/db';
 import { watches } from '$lib/server/db/schema';
 import { getUpcoming, getWatchNext } from '$lib/server/queries';
-import { requireUser } from '$lib/server/users';
+import { getUserById, requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
 	const user = requireUser(locals);
 	return {
 		watchNext: getWatchNext(user.id),
-		upcoming: getUpcoming(user.id)
+		upcoming: getUpcoming(user.id),
+		hideEpisodeOverviews: Boolean(getUserById(user.id)?.hideEpisodeOverviews)
 	};
 };
 

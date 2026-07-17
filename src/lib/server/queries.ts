@@ -14,7 +14,9 @@ export interface WatchNextItem {
 	seasonNumber: number;
 	episodeNumber: number;
 	episodeName: string | null;
+	episodeOverview: string | null;
 	airDate: string | null;
+	runtime: number | null;
 	stillPath: string | null;
 	remaining: number;
 	lastWatchedAt: string | null;
@@ -27,7 +29,9 @@ interface UnwatchedRow {
 	seasonNumber: number;
 	episodeNumber: number;
 	episodeName: string | null;
+	episodeOverview: string | null;
 	airDate: string | null;
+	runtime: number | null;
 	stillPath: string | null;
 	showName: string;
 	posterPath: string | null;
@@ -38,7 +42,8 @@ interface UnwatchedRow {
 export function getWatchNext(userId: number): WatchNextItem[] {
 	const rows = db.all<UnwatchedRow>(sql`
 		SELECT e.id AS episodeId, e.show_id AS showId, s.tmdb_id AS showTmdbId, e.season_number AS seasonNumber,
-			e.episode_number AS episodeNumber, e.name AS episodeName, e.air_date AS airDate,
+			e.episode_number AS episodeNumber, e.name AS episodeName, e.overview AS episodeOverview,
+			e.air_date AS airDate, e.runtime AS runtime,
 			e.still_path AS stillPath, s.name AS showName, s.poster_path AS posterPath,
 			us.followed_at AS followedAt
 		FROM episodes e
@@ -76,7 +81,9 @@ export function getWatchNext(userId: number): WatchNextItem[] {
 			seasonNumber: r.seasonNumber,
 			episodeNumber: r.episodeNumber,
 			episodeName: r.episodeName,
+			episodeOverview: r.episodeOverview,
 			airDate: r.airDate,
+			runtime: r.runtime,
 			stillPath: r.stillPath,
 			remaining: 1,
 			lastWatchedAt: lastActivity.get(r.showId) ?? null
@@ -99,6 +106,8 @@ export interface UpcomingItem {
 	seasonNumber: number;
 	episodeNumber: number;
 	episodeName: string | null;
+	episodeOverview: string | null;
+	runtime: number | null;
 	airDate: string;
 }
 
@@ -107,7 +116,7 @@ export function getUpcoming(userId: number): UpcomingItem[] {
 	return db.all<UpcomingItem>(sql`
 		SELECT e.id AS episodeId, s.id AS showId, s.tmdb_id AS showTmdbId, s.name AS showName,
 			s.poster_path AS posterPath, e.season_number AS seasonNumber, e.episode_number AS episodeNumber,
-			e.name AS episodeName, e.air_date AS airDate
+			e.name AS episodeName, e.overview AS episodeOverview, e.runtime AS runtime, e.air_date AS airDate
 		FROM episodes e
 		JOIN shows s ON s.id = e.show_id
 		JOIN user_shows us ON us.show_id = s.id AND us.user_id = ${userId}

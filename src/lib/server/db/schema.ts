@@ -10,6 +10,10 @@ export const users = sqliteTable('users', {
 	// Image de profil (petite, servie par /profils/[id]/avatar) et son type MIME
 	avatar: blob('avatar', { mode: 'buffer' }),
 	avatarType: text('avatar_type'),
+	// Anti-spoiler : masque les descriptions d'épisodes dans l'interface
+	hideEpisodeOverviews: integer('hide_episode_overviews', { mode: 'boolean' })
+		.notNull()
+		.default(false),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(datetime('now'))`)

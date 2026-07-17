@@ -18,6 +18,7 @@ import {
 	renameUser,
 	requireUser,
 	setUserAvatar,
+	setUserHideEpisodeOverviews,
 	setUserPassword,
 	USER_COOKIE,
 	USER_COOKIE_OPTS
@@ -44,6 +45,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		profileName: user.name,
 		hasPassword: Boolean(account?.passwordHash),
 		hasAvatar: Boolean(account?.avatar),
+		hideEpisodeOverviews: Boolean(account?.hideEpisodeOverviews),
 		totalMinutes: stats.totalMinutes,
 		seriesMinutes: stats.seriesMinutes,
 		movieMinutes: stats.movieMinutes,
@@ -124,6 +126,16 @@ export const actions: Actions = {
 		const user = requireUser(locals);
 		setUserAvatar(user.id, null, null);
 		return { profileOk: 'Image retirée.' };
+	},
+
+	/** Bascule anti-spoiler : masque ou réaffiche les descriptions d'épisodes. */
+	toggleOverviews: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const hide = (await request.formData()).get('hide') === '1';
+		setUserHideEpisodeOverviews(user.id, hide);
+		return {
+			profileOk: hide ? 'Descriptions d’épisodes masquées.' : 'Descriptions d’épisodes affichées.'
+		};
 	},
 
 	/**

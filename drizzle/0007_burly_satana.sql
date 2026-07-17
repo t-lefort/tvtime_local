@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `hide_episode_overviews` integer DEFAULT false NOT NULL;
