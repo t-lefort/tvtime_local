@@ -159,8 +159,20 @@
 	<p class="mt-4 text-sm leading-relaxed text-mut">{movie.overview}</p>
 {/if}
 
-{#if crewGroups.length || movie.companies.length}
+{#if crewGroups.length || movie.companies.length || movie.collection}
 	<section class="mt-4 space-y-1 text-sm">
+		{#if movie.collection}
+			<p>
+				<span class="text-mut">Saga :</span>
+				<a
+					href="/collections/{movie.collection.id}"
+					class="font-medium hover:text-brand hover:underline"
+					title="Voir les films de la saga {movie.collection.name}">{movie.collection.name}</a
+				>{#if movie.collection.total && movie.collection.position}<span class="text-mut"
+						>&nbsp;({movie.collection.position}/{movie.collection.total})</span
+					>{/if}
+			</p>
+		{/if}
 		{#each crewGroups as group (group.label)}
 			<p>
 				<span class="text-mut">{group.label} :</span>

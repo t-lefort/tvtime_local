@@ -1,7 +1,14 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { movies, userMovies, type Movie } from './db/schema';
-import { extractCast, extractCompanies, extractCrew, extractProviders, getMovieDetails } from './tmdb';
+import {
+	extractCast,
+	extractCollection,
+	extractCompanies,
+	extractCrew,
+	extractProviders,
+	getMovieDetails
+} from './tmdb';
 
 export interface CollectMovieOptions {
 	favorite?: boolean;
@@ -18,6 +25,7 @@ export async function addOrUpdateMovie(tmdbId: number): Promise<Movie> {
 	const cast = extractCast(details.credits);
 	const crew = extractCrew(details.credits);
 	const companies = extractCompanies(details.production_companies);
+	const collection = extractCollection(details.belongs_to_collection);
 
 	const base = {
 		title: details.title || details.original_title,
@@ -33,6 +41,7 @@ export async function addOrUpdateMovie(tmdbId: number): Promise<Movie> {
 		cast: cast.length ? JSON.stringify(cast) : null,
 		crew: JSON.stringify(crew),
 		productionCompanies: JSON.stringify(companies),
+		collection: JSON.stringify(collection),
 		lastSyncedAt: sql`(datetime('now'))` as unknown as string
 	};
 

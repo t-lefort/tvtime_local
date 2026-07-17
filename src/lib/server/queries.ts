@@ -217,7 +217,7 @@ export function getMoviesWithWatch(
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
 			m.release_date AS releaseDate, m.runtime, m.vote_average AS voteAverage, m.genres, um.added_at AS addedAt,
 			um.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
-			m.crew, m.production_companies AS productionCompanies,
+			m.crew, m.production_companies AS productionCompanies, m.collection,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id AND w.user_id = ${userId}) AS watchCount,
 			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id AND w.user_id = ${userId}) AS lastWatchedAt
 		FROM movies m

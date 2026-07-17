@@ -97,6 +97,7 @@ export interface TmdbMovieDetails extends TmdbMovieSummary {
 	runtime: number | null;
 	genres: { id: number; name: string }[];
 	production_companies?: TmdbProductionCompany[];
+	belongs_to_collection?: TmdbBelongsToCollection | null;
 	'watch/providers'?: TmdbWatchProviders;
 	credits?: TmdbCredits;
 }
@@ -105,6 +106,13 @@ export interface TmdbProductionCompany {
 	id: number;
 	name: string;
 	logo_path: string | null;
+}
+
+export interface TmdbBelongsToCollection {
+	id: number;
+	name: string;
+	poster_path: string | null;
+	backdrop_path: string | null;
 }
 
 export interface TmdbPersonSummary {
@@ -224,6 +232,20 @@ export function extractCompanies(companies: TmdbProductionCompany[] | undefined)
 	return (companies ?? [])
 		.slice(0, MAX_COMPANIES)
 		.map((c) => ({ id: c.id, name: c.name, logoPath: c.logo_path }));
+}
+
+/** Saga (collection) d'un film stockée en base (colonne collection, JSON). */
+export interface StoredCollection {
+	id: number;
+	name: string;
+}
+
+/** Réduit la saga TMDB d'un film, prête à stocker. Null si le film n'appartient à aucune saga. */
+export function extractCollection(
+	collection: TmdbBelongsToCollection | null | undefined
+): StoredCollection | null {
+	if (!collection) return null;
+	return { id: collection.id, name: collection.name };
 }
 
 interface TmdbMovieCastCredit extends TmdbMovieSummary {
@@ -611,6 +633,57 @@ export async function getCompanyDetails(companyId: number): Promise<TmdbCompanyD
 
 /** Nombre de pages "discover" chargées pour les films d'une société (20 films par page). */
 const COMPANY_MOVIE_PAGES = 2;
+
+export interface TmdbCollectionDetails {
+	id: number;
+	name: string;
+	overview: string | null;
+	poster_path: string | null;
+	backdrop_path: string | null;
+	parts: TmdbMovieSummary[];
+}
+
+export async function getCollectionDetails(collectionId: number): Promise<TmdbCollectionDetails> {
+	return tmdb<TmdbCollectionDetails>(`/collection/${collectionId}`);
+}
+
+/** Trie les films d'une saga par date de sortie (les non datés en dernier). */
+export function orderCollectionParts(parts: TmdbMovieSummary[]): TmdbMovieSummary[] {
+	return parts.slice().sort((a, b) => {
+		const da = a.release_date || '';
+		const db = b.release_date || '';
+		if (da && db) return da.localeCompare(db);
+		return da ? -1 : db ? 1 : 0;
+	});
+}
+
+/** Rang (à partir de 1) d'un film dans sa saga triée par date, ou 0 s'il est absent. */
+export function collectionPosition(orderedParts: TmdbMovieSummary[], tmdbId: number): number {
+	return orderedParts.findIndex((p) => p.id === tmdbId) + 1;
+}
+
+/** Saga d'un film prête à afficher : « Rocky - Saga (2/6) ». */
+export interface CollectionInfo {
+	id: number;
+	name: string;
+	position: number;
+	total: number;
+}
+
+/** Situe un film dans sa saga (rang + total) via l'API collection TMDB. */
+export async function getCollectionInfo(
+	collection: StoredCollection,
+	tmdbId: number
+): Promise<CollectionInfo> {
+	const details = await getCollectionDetails(collection.id);
+	const ordered = orderCollectionParts(details.parts);
+	return {
+		id: collection.id,
+		name: collection.name,
+		position: collectionPosition(ordered, tmdbId),
+		total: ordered.length
+	};
+}
 
 /** Films d'une société de production, triés par notoriété. */
 export async function getCompanyMovies(companyId: number): Promise<TmdbMovieSummary[]> {
