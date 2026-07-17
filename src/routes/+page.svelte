@@ -23,14 +23,13 @@
 	<title>Fil — TV Time local</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl">
 <h1 class="mb-4 text-2xl font-bold">Fil</h1>
 
 <div class="mb-5 flex border-b border-line" role="tablist">
 	<button
 		role="tab"
 		aria-selected={tab === 'avoir'}
-		class="flex-1 border-b-2 pb-2.5 text-sm font-semibold transition-colors
+		class="flex-1 border-b-2 pb-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-8
 			{tab === 'avoir' ? 'border-brand text-brand' : 'border-transparent text-mut'}"
 		onclick={() => (tab = 'avoir')}
 	>
@@ -39,7 +38,7 @@
 	<button
 		role="tab"
 		aria-selected={tab === 'avenir'}
-		class="flex-1 border-b-2 pb-2.5 text-sm font-semibold transition-colors
+		class="flex-1 border-b-2 pb-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-8
 			{tab === 'avenir' ? 'border-brand text-brand' : 'border-transparent text-mut'}"
 		onclick={() => (tab = 'avenir')}
 	>
@@ -54,7 +53,7 @@
 			<p>Tout est vu ! Ajoutez une série via la recherche.</p>
 		</div>
 	{:else}
-		<ul class="space-y-3">
+		<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
 			{#each data.watchNext as item (item.showId)}
 				<li class="flex items-center gap-3 overflow-hidden rounded-xl bg-card">
 					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3">
@@ -114,7 +113,7 @@
 						{daysUntil(date) === 1 ? '' : `dans ${daysUntil(date)} jours`}
 					</span>
 				</h2>
-				<ul class="space-y-2">
+				<ul class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
 					{#each eps as ep (ep.episodeId)}
 						<li>
 							<a href="/series/{ep.showTmdbId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover">
@@ -136,4 +135,3 @@
 		{/each}
 	</div>
 {/if}
-</div>

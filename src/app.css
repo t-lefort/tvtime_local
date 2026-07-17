@@ -12,11 +12,22 @@
 	--color-ok: #3ecf8e;
 }
 
+:root {
+	/* Hauteur de la barre de recherche collante de /recherche. La carte
+	   « meilleure correspondance », collante elle aussi, s'aligne dessous
+	   pour ne pas glisser derrière la barre. */
+	--search-sticky-h: 7.5rem;
+}
+
 html {
 	background: var(--color-bg);
 	color: var(--color-ink);
 	color-scheme: dark;
 	-webkit-tap-highlight-color: transparent;
+	/* Réserve la gouttière de scrollbar en permanence : sans ça, passer d'un
+	   onglet court à un onglet long fait apparaître la scrollbar et décale
+	   horizontalement toute la page. */
+	scrollbar-gutter: stable;
 }
 
 body {

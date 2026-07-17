@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import Poster from '$lib/components/Poster.svelte';
@@ -29,9 +30,17 @@
 	};
 
 	$effect(() => {
-		query = data.q;
-		queuedQuery = data.q;
-		searching = false;
+		const q = data.q;
+		untrack(() => {
+			searching = false;
+			// Si cette navigation est le résultat d'une recherche que l'on a nous-mêmes
+			// déclenchée (frappe débouncée), on laisse le champ intact : sinon le trim
+			// côté serveur écraserait ce que l'utilisateur vient de taper (espace en fin,
+			// caractères ajoutés pendant la navigation…).
+			if (q === queuedQuery) return;
+			query = q;
+			queuedQuery = q;
+		});
 	});
 
 	function searchUrl(type = data.type, q = query) {
@@ -88,35 +97,41 @@
 	<title>Recherche — TV Time local</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl">
 <h1 class="mb-4 text-2xl font-bold">Recherche</h1>
 
-<div class="mb-4 flex gap-2">
-	{#each [{ key: 'series', label: 'Séries' }, { key: 'films', label: 'Films' }] as t (t.key)}
-		<a
-			href={searchUrl(t.key, query)}
-			data-sveltekit-replacestate
-			onclick={clearPendingSearch}
-			class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
-				{data.type === t.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
-		>
-			{t.label}
-		</a>
-	{/each}
-</div>
+<!-- Bloc collant : la barre reste accessible pendant le défilement des résultats,
+	 pour affiner la requête sans remonter en haut de page. Les marges négatives
+	 étendent le fond sur les gouttières de <main> pour masquer ce qui défile dessous. -->
+<div
+	class="sticky top-0 z-20 -mx-4 mb-3 border-b border-line/60 bg-bg/95 px-4 pt-3 pb-3 backdrop-blur md:-mx-6 md:px-6"
+>
+	<div class="mb-3 flex gap-2">
+		{#each [{ key: 'series', label: 'Séries' }, { key: 'films', label: 'Films' }] as t (t.key)}
+			<a
+				href={searchUrl(t.key, query)}
+				data-sveltekit-replacestate
+				onclick={clearPendingSearch}
+				class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
+					{data.type === t.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
+			>
+				{t.label}
+			</a>
+		{/each}
+	</div>
 
-<form method="GET" class="mb-3" onsubmit={markSubmitPending}>
-	<input type="hidden" name="type" value={data.type} />
-	<input
-		type="search"
-		name="q"
-		bind:value={query}
-		oninput={(event) => scheduleSearch(event.currentTarget.value)}
-		placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
-		autocomplete="off"
-		class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-	/>
-</form>
+	<form method="GET" onsubmit={markSubmitPending}>
+		<input type="hidden" name="type" value={data.type} />
+		<input
+			type="search"
+			name="q"
+			bind:value={query}
+			oninput={(event) => scheduleSearch(event.currentTarget.value)}
+			placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
+			autocomplete="off"
+			class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
+		/>
+	</form>
+</div>
 
 <div class="mb-5 min-h-5 text-xs text-mut" aria-live="polite">
 	{#if searching}
@@ -188,7 +203,11 @@
 	</div>
 {:else if preview}
 	{@const previewHref = resultHref(preview)}
-	<section class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70">
+	<!-- Deux colonnes sur grand écran, mais seulement s'il y a de quoi remplir la seconde -->
+	<div class={otherResults.length ? 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-6' : ''}>
+	<section
+		class="mb-5 overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-line/70 lg:sticky lg:top-[calc(var(--search-sticky-h)+0.5rem)] lg:mb-0"
+	>
 		<a href={previewHref} class="group block">
 			<div class="relative h-30 bg-card-hover sm:h-36">
 				{#if preview.backdropPath}
@@ -263,6 +282,7 @@
 	</section>
 
 	{#if otherResults.length}
+		<div class="min-w-0">
 		<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Autres résultats</h2>
 		<ul class="space-y-2">
 			{#each otherResults as result (result.tmdbId)}
@@ -314,7 +334,9 @@
 				</li>
 			{/each}
 		</ul>
+		</div>
 	{/if}
+	</div>
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
 		Cherchez {isFilms ? 'un film' : 'une série'} pour l'ajouter à votre bibliothèque.
@@ -324,4 +346,3 @@
 <p class="mt-8 text-center text-[11px] text-mut/70">
 	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>
 </p>
-</div>

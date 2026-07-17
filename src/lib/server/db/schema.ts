@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { blob, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // Profils : chaque personne utilisant l'instance a sa bibliothèque et son historique
 export const users = sqliteTable('users', {
@@ -27,6 +27,8 @@ export const shows = sqliteTable('shows', {
 	backdropPath: text('backdrop_path'),
 	firstAirDate: text('first_air_date'),
 	tmdbStatus: text('tmdb_status'),
+	// Note moyenne TMDB (0–10), null si inconnue
+	voteAverage: real('vote_average'),
 	genres: text('genres').notNull().default('[]'),
 	episodeRunTime: integer('episode_run_time'),
 	lastSyncedAt: text('last_synced_at'),
@@ -112,6 +114,8 @@ export const movies = sqliteTable('movies', {
 	backdropPath: text('backdrop_path'),
 	releaseDate: text('release_date'),
 	runtime: integer('runtime'),
+	// Note moyenne TMDB (0–10), null si inconnue
+	voteAverage: real('vote_average'),
 	genres: text('genres').notNull().default('[]'),
 	lastSyncedAt: text('last_synced_at'),
 	watchProviders: text('watch_providers'),

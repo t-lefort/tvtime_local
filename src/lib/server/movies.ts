@@ -35,6 +35,7 @@ export async function addOrUpdateMovie(tmdbId: number): Promise<Movie> {
 		backdropPath: details.backdrop_path,
 		releaseDate: details.release_date || null,
 		runtime: details.runtime ?? null,
+		voteAverage: details.vote_average ?? null,
 		genres: JSON.stringify(details.genres.map((g) => g.name)),
 		watchProviders: providers ? JSON.stringify(providers) : null,
 		cast: cast.length ? JSON.stringify(cast) : null,

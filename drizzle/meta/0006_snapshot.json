@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d7a64fb5-ff76-40c4-acf6-497fec14259d",
-  "prevId": "92269f88-3799-432a-ab5f-dca259c8a8f6",
+  "id": "09a44a08-3b5c-4849-a8d9-16e192912815",
+  "prevId": "d7a64fb5-ff76-40c4-acf6-497fec14259d",
   "tables": {
     "episodes": {
       "name": "episodes",
@@ -321,6 +321,13 @@
         },
         "production_companies": {
           "name": "production_companies",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "collection": {
+          "name": "collection",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

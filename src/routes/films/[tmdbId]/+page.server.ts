@@ -63,23 +63,27 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		let crew = JSON.parse(local.crew ?? '[]') as StoredCrewMember[];
 		let companies = JSON.parse(local.productionCompanies ?? '[]') as StoredCompany[];
 		let collection = JSON.parse(local.collection ?? 'null') as StoredCollection | null;
+		let voteAverage = local.voteAverage;
 		if (
 			!cast.length ||
 			local.crew === null ||
 			local.productionCompanies === null ||
-			local.collection === null
+			local.collection === null ||
+			local.voteAverage === null
 		) {
 			const details = await getMovieDetails(tmdbId);
 			if (!cast.length) cast = extractCast(details.credits);
 			crew = extractCrew(details.credits);
 			companies = extractCompanies(details.production_companies);
 			collection = extractCollection(details.belongs_to_collection);
+			voteAverage = details.vote_average ?? null;
 			db.update(movies)
 				.set({
 					cast: cast.length ? JSON.stringify(cast) : local.cast,
 					crew: JSON.stringify(crew),
 					productionCompanies: JSON.stringify(companies),
-					collection: JSON.stringify(collection)
+					collection: JSON.stringify(collection),
+					voteAverage
 				})
 				.where(eq(movies.id, local.id))
 				.run();
@@ -96,6 +100,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 				backdropPath: local.backdropPath,
 				releaseDate: local.releaseDate,
 				runtime: local.runtime,
+				voteAverage,
 				genres: JSON.parse(local.genres) as string[],
 				favorite: local.favorite,
 				watchCount: local.watchCount,
@@ -124,6 +129,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			backdropPath: details.backdrop_path,
 			releaseDate: details.release_date || null,
 			runtime: details.runtime ?? null,
+			voteAverage: details.vote_average ?? null,
 			genres: details.genres.map((g) => g.name),
 			favorite: false,
 			watchCount: 0,

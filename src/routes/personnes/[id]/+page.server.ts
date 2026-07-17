@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
+import { movieWatches, movies, shows, userMovies, userShows } from '$lib/server/db/schema';
 import { requireUser } from '$lib/server/users';
 import {
 	getPersonFilmography,
@@ -13,6 +13,9 @@ import type { PageServerLoad } from './$types';
 
 export interface PersonCreditWithLocal extends PersonCredit {
 	localId: number | null;
+	// Vrai uniquement pour les films effectivement vus (présents dans movie_watches),
+	// pour distinguer « vu » de « à voir » comme dans la liste des films.
+	watched: boolean;
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -47,9 +50,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.all()
 			.map((r) => [r.tmdbId, r.id])
 	);
+	// Films effectivement vus par le profil (présence dans movie_watches).
+	const watchedMovieTmdbIds = new Set(
+		db
+			.select({ tmdbId: movies.tmdbId })
+			.from(movies)
+			.innerJoin(movieWatches, eq(movieWatches.movieId, movies.id))
+			.where(eq(movieWatches.userId, user.id))
+			.all()
+			.map((r) => r.tmdbId)
+	);
 
-	const withLocal = (credits: PersonCredit[], ids: Map<number, number>): PersonCreditWithLocal[] =>
-		credits.map((c) => ({ ...c, localId: ids.get(c.tmdbId) ?? null }));
+	const withLocal = (
+		credits: PersonCredit[],
+		ids: Map<number, number>,
+		watched?: Set<number>
+	): PersonCreditWithLocal[] =>
+		credits.map((c) => ({
+			...c,
+			localId: ids.get(c.tmdbId) ?? null,
+			watched: watched?.has(c.tmdbId) ?? false
+		}));
 
 	return {
 		person: {
@@ -61,7 +82,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			deathday: person.deathday || null,
 			placeOfBirth: person.place_of_birth || null
 		},
-		movies: withLocal(movieCredits, movieIds),
+		movies: withLocal(movieCredits, movieIds, watchedMovieTmdbIds),
 		shows: withLocal(showCredits, showIds)
 	};
 };

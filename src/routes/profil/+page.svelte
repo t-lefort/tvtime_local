@@ -182,7 +182,11 @@
 		<div class="space-y-2.5 rounded-2xl bg-card p-4">
 			{#each data.perGenre as g (g.genre)}
 				<div class="flex items-center gap-3">
-					<span class="w-32 shrink-0 truncate text-sm">{g.genre}</span>
+					<a
+						href="/genres/{encodeURIComponent(g.genre)}"
+						class="w-32 shrink-0 truncate text-sm hover:text-brand hover:underline"
+						title="Explorer le genre {g.genre}">{g.genre}</a
+					>
 					<div class="h-2 flex-1 overflow-hidden rounded-full bg-line/60">
 						<div class="h-full rounded-full bg-brand" style="width: {(g.minutes / maxGenre) * 100}%"></div>
 					</div>
@@ -195,19 +199,25 @@
 
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Profil</h2>
-	<div class="space-y-4 rounded-2xl bg-card p-4">
-		<form method="POST" action="?/rename" use:enhance class="flex flex-wrap items-center gap-2">
-			<input
-				type="text"
-				name="name"
-				value={data.profileName}
-				maxlength="30"
-				autocomplete="off"
-				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			/>
-			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
-				Renommer
-			</button>
+	<div class="divide-y divide-line rounded-2xl bg-card">
+		<form method="POST" action="?/rename" use:enhance class="space-y-2 p-4">
+			<label for="profil-nom" class="block text-sm font-semibold">Nom du profil</label>
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+				<input
+					id="profil-nom"
+					type="text"
+					name="name"
+					value={data.profileName}
+					maxlength="30"
+					autocomplete="off"
+					class="w-full min-w-0 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none sm:flex-1"
+				/>
+				<button
+					class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 sm:w-auto"
+				>
+					Renommer
+				</button>
+			</div>
 		</form>
 		<form
 			method="POST"
@@ -222,69 +232,83 @@
 					avatarResized = null;
 				};
 			}}
-			class="flex flex-wrap items-center gap-3"
+			class="space-y-2 p-4"
 		>
-			{#if data.hasAvatar}
-				<img
-					src="/profils/{data.profileId}/avatar?v={avatarBump}"
-					alt=""
-					class="h-14 w-14 shrink-0 rounded-full object-cover"
+			<label for="profil-image" class="block text-sm font-semibold">Image du profil</label>
+			<div class="flex items-center gap-3">
+				{#if data.hasAvatar}
+					<img
+						src="/profils/{data.profileId}/avatar?v={avatarBump}"
+						alt=""
+						class="h-14 w-14 shrink-0 rounded-full object-cover"
+					/>
+				{:else}
+					<span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-line/60 text-xl font-bold">
+						{data.profileName.trim().charAt(0).toUpperCase()}
+					</span>
+				{/if}
+				<input
+					id="profil-image"
+					type="file"
+					name="avatar"
+					accept="image/png,image/jpeg,image/webp,image/gif"
+					bind:files={avatarFile}
+					onchange={prepareAvatar}
+					class="min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 				/>
-			{:else}
-				<span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-line/60 text-xl font-bold">
-					{data.profileName.trim().charAt(0).toUpperCase()}
-				</span>
-			{/if}
-			<input
-				type="file"
-				name="avatar"
-				accept="image/png,image/jpeg,image/webp,image/gif"
-				bind:files={avatarFile}
-				onchange={prepareAvatar}
-				class="max-w-full min-w-0 flex-1 text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
-			/>
-			<button
-				disabled={!avatarFile?.length}
-				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
-			>
-				Enregistrer l'image
-			</button>
-			{#if data.hasAvatar}
+			</div>
+			<div class="flex flex-col gap-2 sm:flex-row">
 				<button
-					formaction="?/removeAvatar"
-					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+					disabled={!avatarFile?.length}
+					class="w-full rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40 sm:w-auto"
 				>
-					Retirer
+					Enregistrer l'image
 				</button>
-			{/if}
+				{#if data.hasAvatar}
+					<button
+						formaction="?/removeAvatar"
+						class="w-full rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink sm:w-auto"
+					>
+						Retirer l'image
+					</button>
+				{/if}
+			</div>
 		</form>
-		<form method="POST" action="?/setPassword" use:enhance class="flex flex-wrap items-center gap-2">
-			<input
-				type="password"
-				name="password"
-				placeholder={data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
-				autocomplete="new-password"
-				class="min-w-0 flex-1 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			/>
-			<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
-				{data.hasPassword ? 'Changer' : 'Définir'}
-			</button>
-			{#if data.hasPassword}
+		<form method="POST" action="?/setPassword" use:enhance class="space-y-2 p-4">
+			<label for="profil-mdp" class="block text-sm font-semibold">
+				{data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
+			</label>
+			<p class="text-xs text-mut">
+				Sans mot de passe, le profil s'ouvre d'un clic sur l'écran des profils.
+			</p>
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+				<input
+					id="profil-mdp"
+					type="password"
+					name="password"
+					placeholder={data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
+					autocomplete="new-password"
+					class="w-full min-w-0 rounded-xl border border-line bg-bg px-4 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none sm:flex-1"
+				/>
 				<button
-					formaction="?/clearPassword"
-					class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink"
+					class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 sm:w-auto"
 				>
-					Retirer le mot de passe
+					{data.hasPassword ? 'Changer' : 'Définir'}
 				</button>
-			{/if}
+				{#if data.hasPassword}
+					<button
+						formaction="?/clearPassword"
+						class="w-full shrink-0 rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink sm:w-auto"
+					>
+						Retirer le mot de passe
+					</button>
+				{/if}
+			</div>
 		</form>
-		<p class="text-xs text-mut">
-			Sans mot de passe, le profil s'ouvre d'un clic sur l'écran des profils.
-		</p>
 		{#if form?.profileError}
-			<p class="text-sm text-red-400">{form.profileError}</p>
+			<p class="p-4 text-sm text-red-400">{form.profileError}</p>
 		{:else if form?.profileOk}
-			<p class="text-sm text-ok">✓ {form.profileOk}</p>
+			<p class="p-4 text-sm text-ok">✓ {form.profileOk}</p>
 		{/if}
 	</div>
 </section>
@@ -292,10 +316,10 @@
 <section class="mt-6">
 	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Données</h2>
 	<div class="space-y-3 rounded-2xl bg-card p-4">
-		<div class="flex flex-wrap items-center gap-2">
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
 			<a
 				href="/profil/export"
-				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90"
+				class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-center text-sm font-semibold text-brand-ink hover:opacity-90 sm:w-auto"
 			>
 				⬇ Exporter la base
 			</a>
@@ -312,18 +336,18 @@
 					importing = false;
 				};
 			}}
-			class="flex flex-wrap items-center gap-2"
+			class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
 		>
 			<input
 				type="file"
 				name="db"
 				accept=".db,application/vnd.sqlite3,application/x-sqlite3"
 				bind:files={importFile}
-				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+				class="min-w-0 max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button
 				disabled={!importFile?.length || importing}
-				class="rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink disabled:opacity-40"
+				class="w-full shrink-0 rounded-full border border-line px-4 py-2 text-sm font-semibold text-mut hover:border-mut hover:text-ink disabled:opacity-40 sm:w-auto"
 			>
 				{importing ? 'Import…' : 'Importer (remplace les données actuelles)'}
 			</button>
@@ -359,7 +383,7 @@
 					await refreshTvTimeJob();
 				};
 			}}
-			class="flex flex-wrap items-center gap-2"
+			class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
 		>
 			<input
 				type="file"
@@ -367,11 +391,11 @@
 				accept=".zip,.csv"
 				multiple
 				bind:files={tvtimeFiles}
-				class="max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+				class="min-w-0 max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
 			/>
 			<button
 				disabled={!tvtimeFiles?.length || tvtimeStarting || tvtimeJob?.running}
-				class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40"
+				class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-40 sm:w-auto"
 			>
 				{tvtimeJob?.running ? 'Import en cours…' : 'Importer'}
 			</button>

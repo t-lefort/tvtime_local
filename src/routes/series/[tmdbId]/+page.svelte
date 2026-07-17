@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import BackButton from '$lib/components/BackButton.svelte';
 	import CastList from '$lib/components/CastList.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import Rating from '$lib/components/Rating.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { formatDateShort, tmdbImg, yearOf } from '$lib/format';
 
@@ -27,20 +29,17 @@
 	<title>{show.name} — TV Time local</title>
 </svelte:head>
 
-<div class="relative -mx-4 -mt-5 h-44 sm:h-56">
+<div class="relative -mx-4 -mt-5 h-52 sm:h-64 lg:h-72">
 	{#if show.backdropPath}
-		<img src={tmdbImg(show.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+		<img src={tmdbImg(show.backdropPath, 'w780')} alt="" class="h-full w-full object-cover object-top" />
 	{:else}
 		<div class="h-full w-full bg-card"></div>
 	{/if}
 	<div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/30 to-transparent"></div>
-	<a
-		href={data.backHref}
+	<BackButton
+		fallback={data.backHref}
 		class="absolute top-3 left-3 flex h-9 w-9 items-center justify-center rounded-full bg-bg/70 text-lg backdrop-blur hover:bg-bg"
-		aria-label="Retour"
-	>
-		←
-	</a>
+	/>
 </div>
 
 <div class="relative -mt-16 flex items-end gap-4">
@@ -51,13 +50,22 @@
 	</div>
 	<div class="min-w-0 pb-1">
 		<h1 class="text-xl leading-tight font-bold">{show.name}</h1>
-		<p class="mt-1 text-sm text-mut">
+		<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mut">
+			<span>
 			{yearOf(show.firstAirDate)}
 			{#if show.tmdbStatus}· {STATUS_FR[show.tmdbStatus] ?? show.tmdbStatus}{/if}
 			{#if show.archived}· <span class="text-brand">Arrêtée</span>{/if}
+			</span>
+			<Rating value={show.voteAverage} />
 		</p>
 		{#if show.genres.length}
-			<p class="mt-0.5 truncate text-xs text-mut">{show.genres.join(' · ')}</p>
+			<p class="mt-0.5 truncate text-xs text-mut">
+				{#each show.genres as genre, i (genre)}{#if i > 0} · {/if}<a
+						href="/genres/{encodeURIComponent(genre)}"
+						class="hover:text-brand hover:underline"
+						title="Explorer le genre {genre}">{genre}</a
+					>{/each}
+			</p>
 		{/if}
 	</div>
 </div>
