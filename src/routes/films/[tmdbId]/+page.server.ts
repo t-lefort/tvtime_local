@@ -64,9 +64,11 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		let companies = JSON.parse(local.productionCompanies ?? '[]') as StoredCompany[];
 		let collection = JSON.parse(local.collection ?? 'null') as StoredCollection | null;
 		let voteAverage = local.voteAverage;
+		const crewNeedsProfiles = crew.some((member) => member.profilePath === undefined);
 		if (
 			!cast.length ||
 			local.crew === null ||
+			crewNeedsProfiles ||
 			local.productionCompanies === null ||
 			local.collection === null ||
 			local.voteAverage === null

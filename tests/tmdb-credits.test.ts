@@ -14,7 +14,8 @@ const crew = (id: number, name: string, job: string): TmdbCrewMember => ({
 	id,
 	name,
 	job,
-	department: job === 'Director' ? 'Directing' : 'Production'
+	department: job === 'Director' ? 'Directing' : 'Production',
+	profile_path: id === 2 ? '/director.jpg' : null
 });
 
 test('extractCrew keeps directors then producers, deduplicated', () => {
@@ -28,9 +29,9 @@ test('extractCrew keeps directors then producers, deduplicated', () => {
 		]
 	});
 	assert.deepEqual(result, [
-		{ id: 2, name: 'Director B', job: 'Director' },
-		{ id: 1, name: 'Producer A', job: 'Producer' },
-		{ id: 2, name: 'Director B', job: 'Producer' }
+		{ id: 2, name: 'Director B', job: 'Director', profilePath: '/director.jpg' },
+		{ id: 1, name: 'Producer A', job: 'Producer', profilePath: null },
+		{ id: 2, name: 'Director B', job: 'Producer', profilePath: '/director.jpg' }
 	]);
 });
 

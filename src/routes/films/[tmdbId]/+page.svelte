@@ -12,13 +12,8 @@
 	let confirmDelete = $state(false);
 	let adding = $state(false);
 
-	/** Équipe groupée par poste, dans l'ordre réalisation puis production. */
-	const crewGroups = $derived(
-		[
-			{ label: 'Réalisation', people: movie.crew.filter((m) => m.job === 'Director') },
-			{ label: 'Production', people: movie.crew.filter((m) => m.job === 'Producer') }
-		].filter((g) => g.people.length)
-	);
+	const directors = $derived(movie.crew.filter((member) => member.job === 'Director'));
+	const producers = $derived(movie.crew.filter((member) => member.job === 'Producer'));
 </script>
 
 <svelte:head>
@@ -159,7 +154,7 @@
 	<p class="mt-4 text-sm leading-relaxed text-mut">{movie.overview}</p>
 {/if}
 
-{#if crewGroups.length || movie.companies.length || movie.collection}
+{#if producers.length || movie.companies.length || movie.collection}
 	<section class="mt-4 space-y-1 text-sm">
 		{#if movie.collection}
 			<p>
@@ -173,17 +168,17 @@
 					>{/if}
 			</p>
 		{/if}
-		{#each crewGroups as group (group.label)}
+		{#if producers.length}
 			<p>
-				<span class="text-mut">{group.label} :</span>
-				{#each group.people as person, i (person.id)}{#if i > 0},
+				<span class="text-mut">Production :</span>
+				{#each producers as person, i (person.id)}{#if i > 0},
 					{/if}<a
 						href="/personnes/{person.id}"
 						class="font-medium hover:text-brand hover:underline"
 						title="Voir la filmographie de {person.name}">{person.name}</a
 					>{/each}
 			</p>
-		{/each}
+		{/if}
 		{#if movie.companies.length}
 			<p>
 				<span class="text-mut">Sociétés de production :</span>
@@ -197,6 +192,8 @@
 		{/if}
 	</section>
 {/if}
+
+<CastList cast={directors} title="Réalisation" />
 
 <CastList cast={movie.cast} />
 

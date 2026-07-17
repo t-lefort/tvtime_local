@@ -143,6 +143,7 @@ export interface TmdbCrewMember {
 	name: string;
 	job: string;
 	department: string;
+	profile_path: string | null;
 }
 
 interface TmdbCredits {
@@ -192,6 +193,7 @@ export interface StoredCrewMember {
 	id: number;
 	name: string;
 	job: string;
+	profilePath: string | null;
 }
 
 /** Postes conservés dans l'équipe stockée, dans l'ordre d'affichage. */
@@ -210,7 +212,7 @@ export function extractCrew(credits: TmdbCredits | undefined): StoredCrewMember[
 		for (const member of crew) {
 			if (member.job !== job || seen.has(member.id)) continue;
 			seen.add(member.id);
-			result.push({ id: member.id, name: member.name, job });
+			result.push({ id: member.id, name: member.name, job, profilePath: member.profile_path });
 			if (seen.size >= MAX_CREW_PER_JOB) break;
 		}
 	}
