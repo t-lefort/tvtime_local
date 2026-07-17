@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import BackButton from '$lib/components/BackButton.svelte';
 	import CastList from '$lib/components/CastList.svelte';
+	import LocalizedMedia from '$lib/components/LocalizedMedia.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Rating from '$lib/components/Rating.svelte';
@@ -176,6 +177,8 @@
 {/if}
 
 <CastList cast={show.cast} />
+
+<LocalizedMedia variants={data.localizedMedia} />
 
 <WatchProviders providers={show.providers} />
 
