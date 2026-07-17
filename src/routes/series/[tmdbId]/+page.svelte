@@ -210,14 +210,18 @@
 							{@const aired = Boolean(ep.airDate && ep.airDate <= data.today)}
 							<li class="flex items-center gap-3 px-3.5 py-2.5 {aired ? '' : 'opacity-50'}">
 								<span class="w-6 shrink-0 text-right text-sm text-mut tabular-nums">{ep.episodeNumber}</span>
-								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm {ep.watchCount ? 'text-mut' : 'font-medium'}">
+								<a
+									href="/series/{show.tmdbId}/episode/{ep.seasonNumber}/{ep.episodeNumber}"
+									class="group min-w-0 flex-1"
+									title="Voir le détail de l'épisode"
+								>
+									<p class="truncate text-sm transition-colors group-hover:text-brand {ep.watchCount ? 'text-mut' : 'font-medium'}">
 										{ep.name || `Épisode ${ep.episodeNumber}`}
 									</p>
 									<p class="text-xs text-mut">
 										{formatDateShort(ep.airDate)}{ep.runtime ? ` · ${ep.runtime} min` : ''}{ep.watchCount > 1 ? ` · vu ${ep.watchCount}×` : ''}
 									</p>
-								</div>
+								</a>
 								{#if !ep.watchCount && aired && season.number > 0}
 									<form method="POST" action="?/until" use:enhance>
 										<input type="hidden" name="seasonNumber" value={ep.seasonNumber} />

@@ -520,6 +520,21 @@ export async function getShowDetails(tmdbId: number): Promise<TmdbShowDetails> {
 	});
 }
 
+/** Fiche complète d'un épisode : note, guest stars et équipe (réalisation, scénario). */
+export interface TmdbEpisodeDetails extends TmdbEpisode {
+	vote_average: number | null;
+	guest_stars?: TmdbCastMember[];
+	crew?: TmdbCrewMember[];
+}
+
+export async function getEpisodeDetails(
+	tmdbId: number,
+	seasonNumber: number,
+	episodeNumber: number
+): Promise<TmdbEpisodeDetails> {
+	return tmdb<TmdbEpisodeDetails>(`/tv/${tmdbId}/season/${seasonNumber}/episode/${episodeNumber}`);
+}
+
 export async function getSeasonEpisodes(tmdbId: number, seasonNumber: number): Promise<TmdbEpisode[]> {
 	const res = await tmdb<{ episodes: TmdbEpisode[] }>(`/tv/${tmdbId}/season/${seasonNumber}`);
 	return res.episodes;
