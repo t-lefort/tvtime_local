@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		if (e instanceof TmdbError && e.status === 404) error(404, 'Personne introuvable');
 		throw e;
 	}
-	const { person, movies: movieCredits, shows: showCredits } = filmography;
+	const { person, movies: movieCredits, shows: showCredits, other: otherCredits } = filmography;
 
 	const movieIds = new Map(
 		db
@@ -83,6 +83,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			placeOfBirth: person.place_of_birth || null
 		},
 		movies: withLocal(movieCredits, movieIds, watchedMovieTmdbIds),
-		shows: withLocal(showCredits, showIds)
+		shows: withLocal(showCredits, showIds),
+		other: otherCredits.map((credit) => ({
+			...credit,
+			localId:
+				credit.mediaType === 'movie'
+					? (movieIds.get(credit.tmdbId) ?? null)
+					: (showIds.get(credit.tmdbId) ?? null),
+			watched: credit.mediaType === 'movie' && watchedMovieTmdbIds.has(credit.tmdbId)
+		}))
 	};
 };
