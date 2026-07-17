@@ -23,12 +23,16 @@ function auth(): { headers: Record<string, string>; apiKeyParam: string | null }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function tmdb<T>(path: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
+async function tmdb<T>(
+	path: string,
+	params: Record<string, string | number | boolean | null | undefined> = {}
+): Promise<T> {
 	const { headers, apiKeyParam } = auth();
 	const search = new URLSearchParams({ language: 'fr-FR' });
 	if (apiKeyParam) search.set('api_key', apiKeyParam);
 	for (const [k, v] of Object.entries(params)) {
-		if (v !== undefined) search.set(k, String(v));
+		if (v === null) search.delete(k);
+		else if (v !== undefined) search.set(k, String(v));
 	}
 	const url = `${BASE}${path}?${search}`;
 
@@ -100,6 +104,137 @@ export interface TmdbMovieDetails extends TmdbMovieSummary {
 	belongs_to_collection?: TmdbBelongsToCollection | null;
 	'watch/providers'?: TmdbWatchProviders;
 	credits?: TmdbCredits;
+}
+
+interface TmdbTranslation {
+	iso_3166_1: string;
+	iso_639_1: string;
+	name: string;
+	english_name: string;
+	data: { name?: string; title?: string };
+}
+
+interface TmdbPoster {
+	file_path: string;
+	iso_639_1: string | null;
+	vote_average?: number;
+	vote_count?: number;
+}
+
+/** Une variante localisée d'un film ou d'une série, réduite pour l'affichage. */
+export interface LocalizedMediaVariant {
+	languageCode: string;
+	languageName: string;
+	titles: string[];
+	posterPath: string | null;
+}
+
+const MAX_LOCALIZED_VARIANTS = 24;
+const MAX_TITLES_PER_LANGUAGE = 3;
+
+function languageLabel(code: string, fallback?: string): string {
+	let label = fallback || code.toUpperCase();
+	try {
+		label = new Intl.DisplayNames(['fr'], { type: 'language' }).of(code) || label;
+	} catch {
+		// Certains runtimes légers n'embarquent pas Intl.DisplayNames.
+	}
+	return label.charAt(0).toLocaleUpperCase('fr') + label.slice(1);
+}
+
+/**
+ * Regroupe les traductions régionales et conserve la meilleure affiche de chaque langue.
+ * Le français est déjà la langue principale de l'application et n'est donc pas répété.
+ */
+export function buildLocalizedMediaVariants(
+	translations: TmdbTranslation[],
+	posters: TmdbPoster[],
+	primaryLanguage = 'fr',
+	original?: { languageCode: string; title: string }
+): LocalizedMediaVariant[] {
+	const byLanguage = new Map<string, LocalizedMediaVariant>();
+	const fallbacks = new Map<string, string>();
+	const allTranslations = original?.title
+		? [
+				{
+					iso_3166_1: '',
+					iso_639_1: original.languageCode,
+					name: '',
+					english_name: '',
+					data: { title: original.title }
+				},
+				...translations
+			]
+		: translations;
+
+	for (const translation of allTranslations) {
+		const code = translation.iso_639_1?.toLowerCase();
+		if (!code || code === primaryLanguage) continue;
+		fallbacks.set(code, translation.name || translation.english_name);
+		const title = (translation.data.title || translation.data.name || '').trim();
+		if (!title) continue;
+		const variant = byLanguage.get(code) ?? {
+			languageCode: code,
+			languageName: languageLabel(code, fallbacks.get(code)),
+			titles: [],
+			posterPath: null
+		};
+		if (!variant.titles.includes(title) && variant.titles.length < MAX_TITLES_PER_LANGUAGE) {
+			variant.titles.push(title);
+		}
+		byLanguage.set(code, variant);
+	}
+
+	const rankedPosters = posters
+		.filter((poster) => poster.iso_639_1 && poster.iso_639_1.toLowerCase() !== primaryLanguage)
+		.slice()
+		.sort((a, b) =>
+			(b.vote_average ?? 0) - (a.vote_average ?? 0) || (b.vote_count ?? 0) - (a.vote_count ?? 0)
+		);
+	for (const poster of rankedPosters) {
+		const code = poster.iso_639_1!.toLowerCase();
+		const variant = byLanguage.get(code) ?? {
+			languageCode: code,
+			languageName: languageLabel(code, fallbacks.get(code)),
+			titles: [],
+			posterPath: null
+		};
+		if (!variant.posterPath) variant.posterPath = poster.file_path;
+		byLanguage.set(code, variant);
+	}
+
+	return [...byLanguage.values()]
+		.sort((a, b) => a.languageName.localeCompare(b.languageName, 'fr'))
+		.slice(0, MAX_LOCALIZED_VARIANTS);
+}
+
+async function getLocalizedMedia(kind: 'movie' | 'tv', tmdbId: number): Promise<LocalizedMediaVariant[]> {
+	const [detailsResponse, imageResponse] = await Promise.all([
+		tmdb<{
+			original_language: string;
+			original_name?: string;
+			original_title?: string;
+			translations: { translations: TmdbTranslation[] };
+		}>(`/${kind}/${tmdbId}`, { append_to_response: 'translations', language: null }),
+		tmdb<{ posters: TmdbPoster[] }>(`/${kind}/${tmdbId}/images`, { language: null })
+	]);
+	return buildLocalizedMediaVariants(
+		detailsResponse.translations.translations,
+		imageResponse.posters,
+		'fr',
+		{
+			languageCode: detailsResponse.original_language,
+			title: detailsResponse.original_title || detailsResponse.original_name || ''
+		}
+	);
+}
+
+export function getMovieLocalizedMedia(tmdbId: number): Promise<LocalizedMediaVariant[]> {
+	return getLocalizedMedia('movie', tmdbId);
+}
+
+export function getShowLocalizedMedia(tmdbId: number): Promise<LocalizedMediaVariant[]> {
+	return getLocalizedMedia('tv', tmdbId);
 }
 
 export interface TmdbProductionCompany {

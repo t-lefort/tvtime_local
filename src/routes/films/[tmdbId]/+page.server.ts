@@ -13,6 +13,7 @@ import {
 	extractProviders,
 	getCollectionInfo,
 	getMovieDetails,
+	getMovieLocalizedMedia,
 	type CollectionInfo,
 	type StoredCastMember,
 	type StoredCollection,
@@ -55,6 +56,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=films&q=${encodeURIComponent(q)}` : '/films';
+	const localizedMedia = getMovieLocalizedMedia(tmdbId).catch(() => []);
 
 	const local = getMoviesWithWatch(user.id, { tmdbId })[0];
 	if (local) {
@@ -92,6 +94,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		}
 		return {
 			backHref,
+			localizedMedia: await localizedMedia,
 			inLibrary: true,
 			movie: {
 				tmdbId,
@@ -121,6 +124,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const details = await getMovieDetails(tmdbId);
 	return {
 		backHref,
+		localizedMedia: await localizedMedia,
 		inLibrary: false,
 		movie: {
 			tmdbId,

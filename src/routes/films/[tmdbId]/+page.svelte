@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import BackButton from '$lib/components/BackButton.svelte';
 	import CastList from '$lib/components/CastList.svelte';
+	import LocalizedMedia from '$lib/components/LocalizedMedia.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import Rating from '$lib/components/Rating.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
@@ -196,5 +197,7 @@
 <CastList cast={directors} title="Réalisation" />
 
 <CastList cast={movie.cast} />
+
+<LocalizedMedia variants={data.localizedMedia} fallback="🎬" />
 
 <WatchProviders providers={movie.providers} />

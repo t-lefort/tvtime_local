@@ -9,6 +9,7 @@ import {
 	extractCast,
 	extractProviders,
 	getShowDetails,
+	getShowLocalizedMedia,
 	type StoredCastMember,
 	type StoredProviders
 } from '$lib/server/tmdb';
@@ -34,6 +35,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=series&q=${encodeURIComponent(q)}` : '/series';
 	const today = new Date().toISOString().slice(0, 10);
+	const localizedMedia = getShowLocalizedMedia(tmdbId).catch(() => []);
 
 	const local = getShowsWithProgress(user.id, { tmdbId })[0];
 	if (local) {
@@ -74,6 +76,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 		return {
 			backHref,
+			localizedMedia: await localizedMedia,
 			inLibrary: true,
 			show: {
 				tmdbId,
@@ -108,6 +111,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const details = await getShowDetails(tmdbId);
 	return {
 		backHref,
+		localizedMedia: await localizedMedia,
 		inLibrary: false,
 		show: {
 			tmdbId,
