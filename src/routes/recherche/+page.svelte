@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import Poster from '$lib/components/Poster.svelte';
 	import { tmdbImg, yearOf } from '$lib/format';
 
@@ -10,7 +10,9 @@
 	let query = $state('');
 	let searching = $state(false);
 	let queuedQuery = $state('');
+	let hasLocalInput = $state(false);
 	let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+	let navigationCount = 0;
 
 	const isFilms = $derived(data.type === 'films');
 	const preview = $derived(data.results[0] ?? null);
@@ -18,6 +20,12 @@
 	const companies = $derived(data.companies ?? []);
 	const people = $derived(data.people ?? []);
 	const hasSuggestions = $derived(isFilms && (companies.length > 0 || people.length > 0));
+
+	beforeNavigate(({ type }) => {
+		// A navigation triggered outside the live search (link, form or browser
+		// history) is allowed to restore the query from its URL.
+		if (type !== 'goto') hasLocalInput = false;
+	});
 
 	const DEPARTMENT_FR: Record<string, string> = {
 		Acting: 'Acteur / Actrice',
@@ -32,12 +40,20 @@
 	$effect(() => {
 		const q = data.q;
 		untrack(() => {
+			// Une réponse plus ancienne peut arriver pendant que l'utilisateur continue
+			// à modifier le champ. Tant que la saisie locale n'est pas reflétée dans
+			// l'URL, elle reste la source de vérité et ne doit jamais être remplacée.
+			if (hasLocalInput) {
+				if (q === queuedQuery) {
+					searching = false;
+					// Conserver le verrou si le serveur a normalisé la valeur (par exemple
+					// un espace final), afin qu'un rechargement ne déplace pas le curseur.
+					hasLocalInput = query !== q;
+				}
+				return;
+			}
+
 			searching = false;
-			// Si cette navigation est le résultat d'une recherche que l'on a nous-mêmes
-			// déclenchée (frappe débouncée), on laisse le champ intact : sinon le trim
-			// côté serveur écraserait ce que l'utilisateur vient de taper (espace en fin,
-			// caractères ajoutés pendant la navigation…).
-			if (q === queuedQuery) return;
 			query = q;
 			queuedQuery = q;
 		});
@@ -64,26 +80,33 @@
 		query = value;
 		const nextQuery = value.trim();
 		queuedQuery = nextQuery;
+		hasLocalInput = true;
 
 		if (searchTimeout) clearTimeout(searchTimeout);
-		if (nextQuery === data.q) {
+		if (nextQuery === data.q && navigationCount === 0) {
 			searching = false;
 			return;
 		}
 
 		searching = Boolean(nextQuery);
 		searchTimeout = setTimeout(async () => {
-			await goto(searchUrl(data.type, nextQuery), {
-				replaceState: true,
-				keepFocus: true,
-				noScroll: true
-			});
+			navigationCount += 1;
+			try {
+				await goto(searchUrl(data.type, nextQuery), {
+					replaceState: true,
+					keepFocus: true,
+					noScroll: true
+				});
+			} finally {
+				navigationCount -= 1;
+			}
 		}, nextQuery ? 450 : 150);
 	}
 
 	function markSubmitPending() {
 		if (searchTimeout) clearTimeout(searchTimeout);
 		queuedQuery = query.trim();
+		hasLocalInput = true;
 		searching = Boolean(queuedQuery) && queuedQuery !== data.q;
 	}
 
