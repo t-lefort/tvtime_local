@@ -2,12 +2,16 @@
 	import { tmdbImg } from '$lib/format';
 	import type { StoredCastMember } from '$lib/server/tmdb';
 
-	let { cast }: { cast: StoredCastMember[] } = $props();
+	type ProfiledPerson = Pick<StoredCastMember, 'id' | 'name' | 'profilePath'> & {
+		character?: string | null;
+	};
+
+	let { cast, title = 'Distribution' }: { cast: ProfiledPerson[]; title?: string } = $props();
 </script>
 
 {#if cast.length}
 	<section class="mt-6">
-		<h2 class="mb-2 text-sm font-semibold tracking-wide text-mut uppercase">Distribution</h2>
+		<h2 class="mb-2 text-sm font-semibold tracking-wide text-mut uppercase">{title}</h2>
 		<ul class="-mx-4 flex gap-3 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 			{#each cast as person (person.id)}
 				<li class="w-20 shrink-0">
