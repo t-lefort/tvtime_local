@@ -149,8 +149,12 @@
 			name="q"
 			bind:value={query}
 			oninput={(event) => scheduleSearch(event.currentTarget.value)}
-			placeholder={isFilms ? "Nom d'un film…" : "Nom d'une série…"}
+			placeholder={isFilms ? 'Rechercher un film…' : 'Rechercher une série…'}
 			autocomplete="off"
+			autocorrect="off"
+			autocapitalize="off"
+			spellcheck="false"
+			enterkeyhint="search"
 			class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
 		/>
 	</form>
