@@ -645,6 +645,24 @@ export function mergeTvSearchResults(
 	return [...byId.values()];
 }
 
+/** Séries recommandées par TMDB à partir d'une série (1 page, ~20 titres). */
+export async function getTvRecommendations(tmdbId: number): Promise<TmdbShowSummary[]> {
+	const res = await tmdb<{ results: TmdbShowSummary[] }>(`/tv/${tmdbId}/recommendations`);
+	return res.results;
+}
+
+/** Films recommandés par TMDB à partir d'un film (1 page, ~20 titres). */
+export async function getMovieRecommendations(tmdbId: number): Promise<TmdbMovieSummary[]> {
+	const res = await tmdb<{ results: TmdbMovieSummary[] }>(`/movie/${tmdbId}/recommendations`);
+	return res.results;
+}
+
+/** Liste officielle des genres TMDB (id + nom localisé) pour un type de média. */
+export async function getGenres(kind: 'tv' | 'movie'): Promise<{ id: number; name: string }[]> {
+	const res = await tmdb<{ genres: { id: number; name: string }[] }>(`/genre/${kind}/list`);
+	return res.genres;
+}
+
 export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails> {
 	return tmdb<TmdbMovieDetails>(`/movie/${tmdbId}`, {
 		append_to_response: 'watch/providers,credits'
