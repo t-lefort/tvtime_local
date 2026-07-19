@@ -3,6 +3,7 @@
  * (les « graines ») et classement des recommandations TMDB qui en découlent.
  * Séparée de suggestions.ts pour être testable sans base de données ni réseau.
  */
+import { isNonFictionGenre } from './tmdb';
 
 /** Titre de la bibliothèque servant de point de départ aux recommandations. */
 export interface SuggestionSeed {
@@ -116,7 +117,8 @@ const MAX_BECAUSE = 2;
  * Fusionne les recommandations de chaque graine et les classe :
  * un titre recommandé par plusieurs graines (ou des graines très affinitaires)
  * monte, la note TMDB module fortement (facteur 0,5 à 1,5) et l'affinité de
- * genres du profil départage. Les titres déjà en bibliothèque sont exclus.
+ * genres du profil départage. Les titres déjà en bibliothèque et la non-fiction
+ * (documentaires, actualités, téléréalité, talk-shows) sont exclus.
  */
 export function rankSuggestions(
 	entries: { seed: SuggestionSeed; candidates: SuggestionCandidate[] }[],
@@ -130,7 +132,7 @@ export function rankSuggestions(
 	>();
 	for (const { seed, candidates } of entries) {
 		for (const candidate of candidates) {
-			if (exclude.has(candidate.tmdbId)) continue;
+			if (exclude.has(candidate.tmdbId) || isNonFictionGenre(candidate.genreIds)) continue;
 			const entry = byId.get(candidate.tmdbId) ?? { candidate, match: 0, seeds: [] };
 			entry.match += seed.weight;
 			entry.seeds.push(seed);
