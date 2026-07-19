@@ -5,6 +5,7 @@
 	import LocalizedMedia from '$lib/components/LocalizedMedia.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import Rating from '$lib/components/Rating.svelte';
+	import UserRating from '$lib/components/UserRating.svelte';
 	import WatchProviders from '$lib/components/WatchProviders.svelte';
 	import { formatDateShort, tmdbImg, yearOf } from '$lib/format';
 
@@ -150,6 +151,12 @@
 		</form>
 	{/if}
 </div>
+
+{#if data.inLibrary}
+	<div class="mt-3">
+		<UserRating value={movie.rating} />
+	</div>
+{/if}
 
 {#if movie.overview}
 	<p class="mt-4 text-sm leading-relaxed text-mut">{movie.overview}</p>

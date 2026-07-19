@@ -57,6 +57,13 @@
       "when": 1784294971327,
       "tag": "0007_burly_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784445678618,
+      "tag": "0008_reflective_bloodstrike",
+      "breakpoints": true
     }
   ]
 }

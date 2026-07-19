@@ -91,6 +91,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 				genres: JSON.parse(local.genres) as string[],
 				archived: local.archived,
 				favorite: local.favorite,
+				rating: local.rating,
 				watchedCount: local.watchedCount,
 				airedCount: local.airedCount,
 				episodeRunTime: local.episodeRunTime,
@@ -126,6 +127,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			genres: details.genres.map((g) => g.name),
 			archived: false,
 			favorite: false,
+			rating: null as number | null,
 			watchedCount: 0,
 			airedCount: 0,
 			episodeRunTime: details.episode_run_time?.[0] ?? null,
@@ -209,6 +211,15 @@ export const actions: Actions = {
 			.set({ favorite: !userShow.favorite })
 			.where(eq(userShows.id, userShow.id))
 			.run();
+	},
+
+	/** Note personnelle (1–10) ; toute autre valeur retire la note. */
+	rate: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const { userShow } = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId));
+		const raw = Number((await request.formData()).get('rating'));
+		const rating = Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null;
+		db.update(userShows).set({ rating }).where(eq(userShows.id, userShow.id)).run();
 	},
 
 	refresh: async ({ params, locals }) => {

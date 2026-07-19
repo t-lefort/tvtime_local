@@ -4,6 +4,7 @@ import {
 	buildGenreWeights,
 	movieSeedWeight,
 	rankSuggestions,
+	ratingGenreFactor,
 	showSeedWeight,
 	type SuggestionCandidate,
 	type SuggestionSeed
@@ -28,22 +29,50 @@ const candidate = (over: Partial<SuggestionCandidate> & { tmdbId: number }): Sug
 });
 
 test('showSeedWeight favorise les favoris et la progression, ignore les séries arrêtées ou non commencées', () => {
-	assert.equal(showSeedWeight({ favorite: false, archived: true, watchedCount: 10, airedCount: 10 }), 0);
-	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 0, airedCount: 10 }), 0);
-	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 5, airedCount: 10 }), 1.5);
-	assert.equal(showSeedWeight({ favorite: true, archived: false, watchedCount: 10, airedCount: 10 }), 3);
+	assert.equal(showSeedWeight({ favorite: false, archived: true, watchedCount: 10, airedCount: 10, rating: null }), 0);
+	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 0, airedCount: 10, rating: null }), 0);
+	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 5, airedCount: 10, rating: null }), 1.5);
+	assert.equal(showSeedWeight({ favorite: true, archived: false, watchedCount: 10, airedCount: 10, rating: null }), 3);
 	// Plus d'épisodes vus que diffusés (rediffusions) : la progression est plafonnée à 1
-	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 20, airedCount: 10 }), 2);
+	assert.equal(showSeedWeight({ favorite: false, archived: false, watchedCount: 20, airedCount: 10, rating: null }), 2);
 });
 
 test('movieSeedWeight favorise les favoris et les revisionnages plafonnés, ignore les films non vus', () => {
-	assert.equal(movieSeedWeight({ favorite: false, watchCount: 0 }), 0);
-	assert.equal(movieSeedWeight({ favorite: false, watchCount: 1 }), 1.5);
-	assert.equal(movieSeedWeight({ favorite: true, watchCount: 1 }), 2.5);
+	assert.equal(movieSeedWeight({ favorite: false, watchCount: 0, rating: null }), 0);
+	assert.equal(movieSeedWeight({ favorite: false, watchCount: 1, rating: null }), 1.5);
+	assert.equal(movieSeedWeight({ favorite: true, watchCount: 1, rating: null }), 2.5);
 	// Les revisionnages au-delà de 2 ne comptent plus
-	assert.equal(movieSeedWeight({ favorite: false, watchCount: 10 }), 2);
+	assert.equal(movieSeedWeight({ favorite: false, watchCount: 10, rating: null }), 2);
 	// Un favori jamais marqué vu compte quand même
-	assert.equal(movieSeedWeight({ favorite: true, watchCount: 0 }), 2);
+	assert.equal(movieSeedWeight({ favorite: true, watchCount: 0, rating: null }), 2);
+});
+
+test('la note personnelle domine le poids des graines et écarte les titres mal notés', () => {
+	const base = { favorite: false, archived: false, watchedCount: 10, airedCount: 10 };
+	// 10/10 (+3) pèse plus qu'un favori (+1)
+	assert.equal(showSeedWeight({ ...base, rating: 10 }), 5);
+	assert.ok(
+		showSeedWeight({ ...base, rating: 10 }) > showSeedWeight({ ...base, favorite: true, rating: null })
+	);
+	// Mal notée (≤ 4) : jamais une graine, même favorite et finie
+	assert.equal(showSeedWeight({ ...base, favorite: true, rating: 4 }), 0);
+	// Notée mais aucun épisode vu (import) : compte quand même
+	assert.equal(showSeedWeight({ ...base, watchedCount: 0, rating: 8 }), 2.8);
+	// La note explicite prime sur l'archivage : une série arrêtée mais 10/10 reste une graine
+	assert.equal(showSeedWeight({ ...base, archived: true, rating: 10 }), 5);
+	assert.equal(showSeedWeight({ ...base, archived: true, rating: 4 }), 0);
+
+	assert.equal(movieSeedWeight({ favorite: false, watchCount: 1, rating: 10 }), 4.5);
+	assert.equal(movieSeedWeight({ favorite: true, watchCount: 3, rating: 3 }), 0);
+	// Noté mais jamais marqué vu : compte quand même
+	assert.equal(movieSeedWeight({ favorite: false, watchCount: 0, rating: 8 }), 2.8);
+});
+
+test('ratingGenreFactor amplifie les genres des titres bien notés et amortit les mal notés', () => {
+	assert.equal(ratingGenreFactor(null), 1);
+	assert.equal(ratingGenreFactor(10), 2);
+	assert.equal(ratingGenreFactor(5), 1);
+	assert.equal(ratingGenreFactor(1), 0.2);
 });
 
 test('buildGenreWeights normalise le temps passé par genre entre 0 et 1', () => {
