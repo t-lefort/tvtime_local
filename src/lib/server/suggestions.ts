@@ -12,6 +12,7 @@ import {
 	type TmdbShowSummary
 } from './tmdb';
 import {
+	buildEraAffinity,
 	buildGenreWeights,
 	movieSeedWeight,
 	rankSuggestions,
@@ -55,6 +56,8 @@ function showCandidate(s: TmdbShowSummary): SuggestionCandidate {
 		backdropPath: s.backdrop_path,
 		date: s.first_air_date,
 		voteAverage: s.vote_average,
+		voteCount: s.vote_count ?? 0,
+		popularity: s.popularity ?? 0,
 		genreIds: s.genre_ids ?? []
 	};
 }
@@ -69,6 +72,8 @@ function movieCandidate(m: TmdbMovieSummary): SuggestionCandidate {
 		backdropPath: m.backdrop_path,
 		date: m.release_date,
 		voteAverage: m.vote_average,
+		voteCount: m.vote_count ?? 0,
+		popularity: m.popularity ?? 0,
 		genreIds: m.genre_ids ?? []
 	};
 }
@@ -151,8 +156,25 @@ export async function getSuggestions(userId: number): Promise<SuggestionsResult>
 		new Map(movieGenres.map((g) => [g.name, g.id]))
 	);
 
+	// Affinité temporelle par type : les époques regardées par le profil, pondérées
+	// comme les graines (les titres notés ou favoris façonnent davantage le goût).
+	const tvEraAffinity = buildEraAffinity(
+		shows.map((s) => ({ date: s.firstAirDate, weight: showSeedWeight(s) }))
+	);
+	const movieEraAffinity = buildEraAffinity(
+		movies.map((m) => ({ date: m.releaseDate, weight: movieSeedWeight(m) }))
+	);
+
 	return {
-		series: rankSuggestions(showEntries, new Set(shows.map((s) => s.tmdbId)), tvGenreWeights),
-		films: rankSuggestions(movieEntries, new Set(movies.map((m) => m.tmdbId)), movieGenreWeights)
+		series: rankSuggestions(showEntries, {
+			exclude: new Set(shows.map((s) => s.tmdbId)),
+			genreWeights: tvGenreWeights,
+			eraAffinity: tvEraAffinity
+		}),
+		films: rankSuggestions(movieEntries, {
+			exclude: new Set(movies.map((m) => m.tmdbId)),
+			genreWeights: movieGenreWeights,
+			eraAffinity: movieEraAffinity
+		})
 	};
 }
