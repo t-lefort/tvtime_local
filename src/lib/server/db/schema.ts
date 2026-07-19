@@ -57,7 +57,9 @@ export const userShows = sqliteTable(
 			.notNull()
 			.default(sql`(datetime('now'))`),
 		archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
-		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false)
+		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+		// Note personnelle du profil (1–10), null = non notée
+		rating: integer('rating')
 	},
 	(t) => [
 		uniqueIndex('user_shows_user_show').on(t.userId, t.showId),
@@ -147,7 +149,9 @@ export const userMovies = sqliteTable(
 		addedAt: text('added_at')
 			.notNull()
 			.default(sql`(datetime('now'))`),
-		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false)
+		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+		// Note personnelle du profil (1–10), null = non noté
+		rating: integer('rating')
 	},
 	(t) => [
 		uniqueIndex('user_movies_user_movie').on(t.userId, t.movieId),

@@ -134,6 +134,7 @@ export interface ShowWithProgress extends Show {
 	followedAt: string;
 	archived: boolean;
 	favorite: boolean;
+	rating: number | null;
 	airedCount: number;
 	totalCount: number;
 	watchedCount: number;
@@ -170,7 +171,7 @@ export function getShowsWithProgress(
 			s.overview, s.poster_path AS posterPath, s.backdrop_path AS backdropPath,
 			s.first_air_date AS firstAirDate, s.tmdb_status AS tmdbStatus, s.vote_average AS voteAverage, s.genres,
 			s.episode_run_time AS episodeRunTime, us.followed_at AS followedAt,
-			us.archived, us.favorite, s.last_synced_at AS lastSyncedAt,
+			us.archived, us.favorite, us.rating, s.last_synced_at AS lastSyncedAt,
 			s.watch_providers AS watchProviders, s.cast,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0
 				AND e.air_date IS NOT NULL AND e.air_date <= date('now')) AS airedCount,
@@ -206,6 +207,7 @@ export function getShowsWithProgress(
 export interface MovieWithWatch extends Movie {
 	addedAt: string;
 	favorite: boolean;
+	rating: number | null;
 	watchCount: number;
 	lastWatchedAt: string | null;
 }
@@ -225,7 +227,7 @@ export function getMoviesWithWatch(
 		SELECT m.id, m.tmdb_id AS tmdbId, m.title, m.original_title AS originalTitle,
 			m.overview, m.poster_path AS posterPath, m.backdrop_path AS backdropPath,
 			m.release_date AS releaseDate, m.runtime, m.vote_average AS voteAverage, m.genres, um.added_at AS addedAt,
-			um.favorite, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
+			um.favorite, um.rating, m.last_synced_at AS lastSyncedAt, m.watch_providers AS watchProviders, m.cast,
 			m.crew, m.production_companies AS productionCompanies, m.collection,
 			(SELECT COUNT(*) FROM movie_watches w WHERE w.movie_id = m.id AND w.user_id = ${userId}) AS watchCount,
 			(SELECT MAX(w.watched_at) FROM movie_watches w WHERE w.movie_id = m.id AND w.user_id = ${userId}) AS lastWatchedAt

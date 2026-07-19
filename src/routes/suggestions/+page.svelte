@@ -22,7 +22,7 @@
 
 <h1 class="mb-1 text-2xl font-bold">Pour vous</h1>
 <p class="mb-4 text-sm text-mut">
-	Suggestions d'après vos visionnages, vos favoris et les notes TMDB.
+	Suggestions d'après vos notes, vos favoris, vos visionnages et les notes TMDB.
 </p>
 
 <div class="mb-5 flex border-b border-line" role="tablist">

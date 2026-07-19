@@ -32,26 +32,59 @@ export interface Suggestion extends Omit<SuggestionCandidate, 'genreIds'> {
 	because: string[];
 }
 
+/** Note personnelle en dessous de laquelle un titre ne sert jamais de graine. */
+const MIN_SEED_RATING = 5;
+
 /**
- * Poids d'une série comme graine : favori et part des épisodes vus renforcent,
- * une série arrêtée ou jamais commencée ne compte pas.
+ * Apport de la note personnelle au poids d'une graine : ±0,6 par point autour
+ * de 5 (10/10 → +3, soit plus qu'un favori), pour qu'elle domine les autres signaux.
+ */
+function ratingBoost(rating: number | null): number {
+	return rating === null ? 0 : (rating - 5) * 0.6;
+}
+
+/**
+ * Poids d'une série comme graine : la note personnelle domine — mal notée = jamais
+ * une graine, bien notée = graine même arrêtée (la note explicite prime sur
+ * l'archivage). Sans note, favori et part des épisodes vus renforcent ; une série
+ * arrêtée ou jamais commencée (sauf favorite) ne compte pas.
  */
 export function showSeedWeight(s: {
 	favorite: boolean;
 	archived: boolean;
 	watchedCount: number;
 	airedCount: number;
+	rating: number | null;
 }): number {
-	if (s.archived) return 0;
-	if (s.watchedCount === 0 && !s.favorite) return 0;
+	if (s.rating !== null && s.rating < MIN_SEED_RATING) return 0;
+	if (s.rating === null && s.archived) return 0;
+	if (s.rating === null && s.watchedCount === 0 && !s.favorite) return 0;
 	const progress = s.airedCount > 0 ? Math.min(s.watchedCount / s.airedCount, 1) : 0;
-	return 1 + progress + (s.favorite ? 1 : 0);
+	return 1 + progress + (s.favorite ? 1 : 0) + ratingBoost(s.rating);
 }
 
-/** Poids d'un film comme graine : favori et revisionnages renforcent, non vu = ignoré. */
-export function movieSeedWeight(m: { favorite: boolean; watchCount: number }): number {
-	if (m.watchCount === 0 && !m.favorite) return 0;
-	return 1 + Math.min(m.watchCount, 2) * 0.5 + (m.favorite ? 1 : 0);
+/**
+ * Poids d'un film comme graine : la note personnelle domine (mal noté = jamais
+ * une graine), puis favori et revisionnages renforcent ; non vu (sauf noté ou
+ * favori) = ignoré.
+ */
+export function movieSeedWeight(m: {
+	favorite: boolean;
+	watchCount: number;
+	rating: number | null;
+}): number {
+	if (m.rating !== null && m.rating < MIN_SEED_RATING) return 0;
+	if (m.watchCount === 0 && !m.favorite && m.rating === null) return 0;
+	return 1 + Math.min(m.watchCount, 2) * 0.5 + (m.favorite ? 1 : 0) + ratingBoost(m.rating);
+}
+
+/**
+ * Facteur appliqué au temps passé par genre selon la note personnelle du titre :
+ * 0,2 (noté 1) à 2 (noté 10), neutre si non noté. Les genres des titres bien notés
+ * pèsent ainsi deux fois plus dans l'affinité du profil.
+ */
+export function ratingGenreFactor(rating: number | null): number {
+	return rating === null ? 1 : rating / 5;
 }
 
 /**

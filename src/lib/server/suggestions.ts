@@ -15,6 +15,7 @@ import {
 	buildGenreWeights,
 	movieSeedWeight,
 	rankSuggestions,
+	ratingGenreFactor,
 	showSeedWeight,
 	type Suggestion,
 	type SuggestionCandidate,
@@ -136,13 +137,16 @@ export async function getSuggestions(userId: number): Promise<SuggestionsResult>
 	]);
 
 	const tvGenreWeights = buildGenreWeights(
-		shows.map((s) => ({ genres: JSON.parse(s.genres) as string[], weight: s.minutesWatched })),
+		shows.map((s) => ({
+			genres: JSON.parse(s.genres) as string[],
+			weight: s.minutesWatched * ratingGenreFactor(s.rating)
+		})),
 		new Map(tvGenres.map((g) => [g.name, g.id]))
 	);
 	const movieGenreWeights = buildGenreWeights(
 		movies.map((m) => ({
 			genres: JSON.parse(m.genres) as string[],
-			weight: m.watchCount * (m.runtime ?? DEFAULT_MOVIE_RUNTIME)
+			weight: m.watchCount * (m.runtime ?? DEFAULT_MOVIE_RUNTIME) * ratingGenreFactor(m.rating)
 		})),
 		new Map(movieGenres.map((g) => [g.name, g.id]))
 	);

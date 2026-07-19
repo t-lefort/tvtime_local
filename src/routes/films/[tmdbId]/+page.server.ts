@@ -108,6 +108,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 				voteAverage,
 				genres: JSON.parse(local.genres) as string[],
 				favorite: local.favorite,
+				rating: local.rating,
 				watchCount: local.watchCount,
 				lastWatchedAt: local.lastWatchedAt,
 				providers: local.watchProviders
@@ -138,6 +139,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			voteAverage: details.vote_average ?? null,
 			genres: details.genres.map((g) => g.name),
 			favorite: false,
+			rating: null as number | null,
 			watchCount: 0,
 			lastWatchedAt: null as string | null,
 			providers: extractProviders(details['watch/providers']),
@@ -184,6 +186,15 @@ export const actions: Actions = {
 			.set({ favorite: !userMovie.favorite })
 			.where(eq(userMovies.id, userMovie.id))
 			.run();
+	},
+
+	/** Note personnelle (1–10) ; toute autre valeur retire la note. */
+	rate: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const { userMovie } = requireCollectedMovie(user.id, tmdbIdFromParam(params.tmdbId));
+		const raw = Number((await request.formData()).get('rating'));
+		const rating = Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null;
+		db.update(userMovies).set({ rating }).where(eq(userMovies.id, userMovie.id)).run();
 	},
 
 	refresh: async ({ params, locals }) => {
