@@ -139,7 +139,7 @@ test('rankSuggestions départage par la note TMDB puis par l’affinité de genr
 			{
 				seed: s,
 				candidates: [
-					candidate({ tmdbId: 10, genreIds: [99] }),
+					candidate({ tmdbId: 10, genreIds: [35] }),
 					candidate({ tmdbId: 11, genreIds: [18] })
 				]
 			}
@@ -150,6 +150,30 @@ test('rankSuggestions départage par la note TMDB puis par l’affinité de genr
 	assert.deepEqual(
 		byGenre.map((r) => r.tmdbId),
 		[11, 10]
+	);
+});
+
+test('rankSuggestions exclut la non-fiction (documentaires, téléréalité, talk-shows, actualités)', () => {
+	const ranked = rankSuggestions(
+		[
+			{
+				seed: seed({ tmdbId: 1 }),
+				candidates: [
+					candidate({ tmdbId: 10, genreIds: [99] }), // Documentaire
+					candidate({ tmdbId: 11, genreIds: [10763] }), // Actualités
+					candidate({ tmdbId: 12, genreIds: [10764] }), // Téléréalité
+					candidate({ tmdbId: 13, genreIds: [10767] }), // Talk-show
+					candidate({ tmdbId: 14, genreIds: [18, 99] }), // Drame + Documentaire
+					candidate({ tmdbId: 15, genreIds: [18] }) // Drame
+				]
+			}
+		],
+		new Set(),
+		new Map()
+	);
+	assert.deepEqual(
+		ranked.map((r) => r.tmdbId),
+		[15]
 	);
 });
 
