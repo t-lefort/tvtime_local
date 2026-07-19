@@ -67,6 +67,7 @@ export interface TmdbShowSummary {
 	backdrop_path: string | null;
 	first_air_date: string | null;
 	vote_average: number;
+	vote_count?: number;
 	popularity?: number;
 	origin_country?: string[];
 }

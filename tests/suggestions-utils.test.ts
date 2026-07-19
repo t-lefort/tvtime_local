@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+	buildEraAffinity,
 	buildGenreWeights,
 	movieSeedWeight,
 	rankSuggestions,
@@ -19,11 +20,13 @@ const seed = (over: Partial<SuggestionSeed> & { tmdbId: number }): SuggestionSee
 const candidate = (over: Partial<SuggestionCandidate> & { tmdbId: number }): SuggestionCandidate => ({
 	name: `Titre ${over.tmdbId}`,
 	originalName: `Titre ${over.tmdbId}`,
-	overview: '',
+	overview: 'Résumé français.',
 	posterPath: null,
 	backdropPath: null,
 	date: null,
 	voteAverage: 7,
+	voteCount: 1000,
+	popularity: 0,
 	genreIds: [],
 	...over
 });
@@ -102,8 +105,7 @@ test('rankSuggestions exclut la bibliothèque et fait monter les titres recomman
 			{ seed: a, candidates: [candidate({ tmdbId: 10 }), candidate({ tmdbId: 11 }), candidate({ tmdbId: 99 })] },
 			{ seed: b, candidates: [candidate({ tmdbId: 10 })] }
 		],
-		new Set([99]),
-		new Map()
+		{ exclude: new Set([99]), genreWeights: new Map() }
 	);
 	assert.deepEqual(
 		ranked.map((r) => r.tmdbId),
@@ -126,8 +128,7 @@ test('rankSuggestions départage par la note TMDB puis par l’affinité de genr
 				]
 			}
 		],
-		new Set(),
-		new Map()
+		{ exclude: new Set(), genreWeights: new Map() }
 	);
 	assert.deepEqual(
 		byNote.map((r) => r.tmdbId),
@@ -144,8 +145,7 @@ test('rankSuggestions départage par la note TMDB puis par l’affinité de genr
 				]
 			}
 		],
-		new Set(),
-		new Map([[18, 1]])
+		{ exclude: new Set(), genreWeights: new Map([[18, 1]]) }
 	);
 	assert.deepEqual(
 		byGenre.map((r) => r.tmdbId),
@@ -168,8 +168,7 @@ test('rankSuggestions exclut la non-fiction (documentaires, téléréalité, tal
 				]
 			}
 		],
-		new Set(),
-		new Map()
+		{ exclude: new Set(), genreWeights: new Map() }
 	);
 	assert.deepEqual(
 		ranked.map((r) => r.tmdbId),
@@ -180,6 +179,80 @@ test('rankSuggestions exclut la non-fiction (documentaires, téléréalité, tal
 test('rankSuggestions plafonne le nombre de résultats', () => {
 	const s = seed({ tmdbId: 1 });
 	const candidates = Array.from({ length: 30 }, (_, i) => candidate({ tmdbId: 100 + i }));
-	assert.equal(rankSuggestions([{ seed: s, candidates }], new Set(), new Map()).length, 24);
-	assert.equal(rankSuggestions([{ seed: s, candidates }], new Set(), new Map(), 5).length, 5);
+	const options = { exclude: new Set<number>(), genreWeights: new Map<number, number>() };
+	assert.equal(rankSuggestions([{ seed: s, candidates }], options).length, 24);
+	assert.equal(rankSuggestions([{ seed: s, candidates }], { ...options, limit: 5 }).length, 5);
+});
+
+test('rankSuggestions écarte les titres confidentiels ou sans résumé français', () => {
+	const ranked = rankSuggestions(
+		[
+			{
+				seed: seed({ tmdbId: 1 }),
+				candidates: [
+					candidate({ tmdbId: 10, voteCount: 40 }), // trop peu de votes
+					candidate({ tmdbId: 11, overview: '  ' }), // jamais distribué en France
+					candidate({ tmdbId: 12 })
+				]
+			}
+		],
+		{ exclude: new Set(), genreWeights: new Map() }
+	);
+	assert.deepEqual(
+		ranked.map((r) => r.tmdbId),
+		[12]
+	);
+});
+
+test('rankSuggestions départage en faveur des titres notoires (popularité TMDB)', () => {
+	const ranked = rankSuggestions(
+		[
+			{
+				seed: seed({ tmdbId: 1 }),
+				candidates: [
+					candidate({ tmdbId: 10, popularity: 2 }),
+					candidate({ tmdbId: 11, popularity: 150 })
+				]
+			}
+		],
+		{ exclude: new Set(), genreWeights: new Map() }
+	);
+	assert.deepEqual(
+		ranked.map((r) => r.tmdbId),
+		[11, 10]
+	);
+});
+
+test("buildEraAffinity apprend les époques du profil et reste neutre sans données", () => {
+	const recent = buildEraAffinity([
+		{ date: '2022-03-01', weight: 3 },
+		{ date: '2024-09-01', weight: 2 },
+		{ date: null, weight: 5 }, // sans date : ignoré
+		{ date: '1970-01-01', weight: 0 } // poids nul : ignoré
+	]);
+	assert.ok(recent('2023-06-01') > 0.8);
+	assert.equal(recent('1975-01-01'), 0);
+	assert.equal(recent(null), 0.5);
+	// Bibliothèque vide : neutre partout
+	assert.equal(buildEraAffinity([])('2023-01-01'), 0.5);
+});
+
+test("rankSuggestions privilégie l'époque que le profil regarde", () => {
+	const s = seed({ tmdbId: 1 });
+	const candidates = [
+		candidate({ tmdbId: 10, date: '1978-05-12' }),
+		candidate({ tmdbId: 11, date: '2023-05-12' })
+	];
+	const recentProfile = buildEraAffinity([{ date: '2021-01-01', weight: 1 }]);
+	const classicProfile = buildEraAffinity([{ date: '1975-01-01', weight: 1 }]);
+	const options = { exclude: new Set<number>(), genreWeights: new Map<number, number>() };
+
+	assert.deepEqual(
+		rankSuggestions([{ seed: s, candidates }], { ...options, eraAffinity: recentProfile }).map((r) => r.tmdbId),
+		[11, 10]
+	);
+	assert.deepEqual(
+		rankSuggestions([{ seed: s, candidates }], { ...options, eraAffinity: classicProfile }).map((r) => r.tmdbId),
+		[10, 11]
+	);
 });
