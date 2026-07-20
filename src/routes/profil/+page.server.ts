@@ -19,6 +19,7 @@ import {
 	requireUser,
 	setUserAvatar,
 	setUserHideEpisodeOverviews,
+	setUserHideSuggestions,
 	setUserPassword,
 	USER_COOKIE,
 	USER_COOKIE_OPTS
@@ -46,6 +47,7 @@ export const load: PageServerLoad = ({ locals }) => {
 		hasPassword: Boolean(account?.passwordHash),
 		hasAvatar: Boolean(account?.avatar),
 		hideEpisodeOverviews: Boolean(account?.hideEpisodeOverviews),
+		hideSuggestions: Boolean(account?.hideSuggestions),
 		totalMinutes: stats.totalMinutes,
 		seriesMinutes: stats.seriesMinutes,
 		movieMinutes: stats.movieMinutes,
@@ -135,6 +137,16 @@ export const actions: Actions = {
 		setUserHideEpisodeOverviews(user.id, hide);
 		return {
 			profileOk: hide ? 'Descriptions d’épisodes masquées.' : 'Descriptions d’épisodes affichées.'
+		};
+	},
+
+	/** Masque ou réaffiche la page de suggestions « Pour vous » (onglet et route). */
+	toggleSuggestions: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const hide = (await request.formData()).get('hide') === '1';
+		setUserHideSuggestions(user.id, hide);
+		return {
+			profileOk: hide ? 'Page de suggestions masquée.' : 'Page de suggestions affichée.'
 		};
 	},
 

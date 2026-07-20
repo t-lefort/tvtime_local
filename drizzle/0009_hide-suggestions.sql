@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `hide_suggestions` integer DEFAULT false NOT NULL;

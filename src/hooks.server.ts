@@ -14,7 +14,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const { USER_COOKIE, userFromCookie } = await import('$lib/server/users');
 	const user = userFromCookie(event.cookies.get(USER_COOKIE));
 	// Champs sensibles (hash, image) volontairement absents des locals
-	event.locals.user = user ? { id: user.id, name: user.name } : null;
+	event.locals.user = user
+		? { id: user.id, name: user.name, hideSuggestions: user.hideSuggestions }
+		: null;
 	if (!event.locals.user && !event.url.pathname.startsWith('/profils')) {
 		redirect(303, '/profils');
 	}

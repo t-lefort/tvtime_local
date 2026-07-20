@@ -4,7 +4,7 @@
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import { page } from '$app/state';
 
-	let { children } = $props();
+	let { data, children } = $props();
 	// Pas de navigation avant d'être connecté à un profil (sélecteur, connexion profil)
 	const hideNav = $derived(page.url.pathname.startsWith('/profils'));
 </script>
@@ -18,5 +18,5 @@
 </main>
 
 {#if !hideNav}
-	<BottomNav />
+	<BottomNav hideSuggestions={data.hideSuggestions} />
 {/if}

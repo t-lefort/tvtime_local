@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
 
-	const items = [
+	let { hideSuggestions = false }: { hideSuggestions?: boolean } = $props();
+
+	const allItems = [
 		{ href: '/', label: 'Fil', d: 'M4 6h16M4 12h16M4 18h9' },
 		{
 			href: '/series',
@@ -29,6 +31,10 @@
 			d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z'
 		}
 	];
+
+	const items = $derived(
+		hideSuggestions ? allItems.filter((i) => i.href !== '/suggestions') : allItems
+	);
 
 	function isActive(href: string): boolean {
 		return href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);

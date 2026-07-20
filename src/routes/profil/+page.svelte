@@ -295,6 +295,27 @@
 				></span>
 			</button>
 		</form>
+		<form method="POST" action="?/toggleSuggestions" use:enhance class="flex items-center justify-between gap-4 p-4">
+			<div class="min-w-0">
+				<p class="text-sm font-semibold">Masquer la page de suggestions</p>
+				<p class="mt-0.5 text-xs text-mut">
+					Retire l'onglet « Pour vous » de la navigation et désactive la page.
+				</p>
+			</div>
+			<input type="hidden" name="hide" value={data.hideSuggestions ? '' : '1'} />
+			<button
+				role="switch"
+				aria-checked={data.hideSuggestions}
+				aria-label="Masquer la page de suggestions"
+				class="relative h-7 w-12 shrink-0 rounded-full transition-colors
+					{data.hideSuggestions ? 'bg-brand' : 'bg-line'}"
+			>
+				<span
+					class="absolute top-1 left-1 h-5 w-5 rounded-full bg-bg transition-transform
+						{data.hideSuggestions ? 'translate-x-5' : ''}"
+				></span>
+			</button>
+		</form>
 		<form method="POST" action="?/setPassword" use:enhance class="space-y-2 p-4">
 			<label for="profil-mdp" class="block text-sm font-semibold">
 				{data.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}

@@ -5,7 +5,7 @@ declare global {
 		// interface Error {}
 		interface Locals {
 			/** Profil actif ; garanti non nul par hooks.server.ts hors /profils. */
-			user: { id: number; name: string } | null;
+			user: { id: number; name: string; hideSuggestions: boolean } | null;
 		}
 		// interface PageData {}
 		// interface PageState {}

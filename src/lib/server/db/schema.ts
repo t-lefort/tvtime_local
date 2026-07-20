@@ -14,6 +14,10 @@ export const users = sqliteTable('users', {
 	hideEpisodeOverviews: integer('hide_episode_overviews', { mode: 'boolean' })
 		.notNull()
 		.default(false),
+	// Masque la page de suggestions « Pour vous » (onglet et route)
+	hideSuggestions: integer('hide_suggestions', { mode: 'boolean' })
+		.notNull()
+		.default(false),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(datetime('now'))`)

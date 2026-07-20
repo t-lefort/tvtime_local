@@ -7,6 +7,8 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
+	// Page désactivée dans les paramètres du profil
+	if (locals.user?.hideSuggestions) redirect(303, '/');
 	try {
 		const { series, films } = await getSuggestions(user.id);
 		return { series, films, error: null };
