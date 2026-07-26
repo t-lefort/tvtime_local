@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
 	buildEraAffinity,
 	buildGenreWeights,
+	canonicalPlatforms,
+	collectPlatforms,
 	movieSeedWeight,
 	rankSuggestions,
 	ratingGenreFactor,
@@ -221,6 +223,56 @@ test('rankSuggestions départage en faveur des titres notoires (popularité TMDB
 		ranked.map((r) => r.tmdbId),
 		[11, 10]
 	);
+});
+
+test('canonicalPlatforms regroupe les déclinaisons JustWatch d’une même plateforme', () => {
+	assert.deepEqual(
+		canonicalPlatforms([
+			{ name: 'Netflix', logoPath: '/n.jpg' },
+			{ name: 'Netflix Standard with Ads', logoPath: '/na.jpg' },
+			{ name: 'Paramount+ Amazon Channel', logoPath: null },
+			{ name: 'Paramount Plus', logoPath: '/p.jpg' },
+			{ name: 'Paramount Plus Apple TV Channel', logoPath: '/pa.jpg' },
+			{ name: 'Disney Plus', logoPath: '/d.jpg' }
+		]),
+		[
+			{ name: 'Netflix', logoPath: '/n.jpg' },
+			// Le nom le plus court l'emporte, le premier logo connu est conservé
+			{ name: 'Paramount+', logoPath: '/p.jpg' },
+			{ name: 'Disney Plus', logoPath: '/d.jpg' }
+		]
+	);
+	// Une plateforme dont le nom est un suffixe (« Apple TV ») n'est pas effacée
+	assert.deepEqual(canonicalPlatforms([{ name: 'Apple TV+', logoPath: null }]), [
+		{ name: 'Apple TV+', logoPath: null }
+	]);
+});
+
+test('collectPlatforms dédoublonne les plateformes et les classe par nombre de suggestions', () => {
+	const options = collectPlatforms([
+		{ platforms: [{ name: 'Netflix', logoPath: '/n.jpg' }, { name: 'Max', logoPath: null }] },
+		{ platforms: [{ name: 'Netflix', logoPath: '/n.jpg' }] },
+		{ platforms: [{ name: 'Disney+', logoPath: '/d.jpg' }] },
+		{ platforms: [] } // titre sans plateforme connue : n'apparaît sous aucun filtre
+	]);
+	assert.deepEqual(
+		options.map((p) => [p.name, p.count]),
+		[
+			['Netflix', 2],
+			['Disney+', 1],
+			['Max', 1]
+		]
+	);
+	assert.equal(options[0].logoPath, '/n.jpg');
+	assert.deepEqual(collectPlatforms([]), []);
+});
+
+test('rankSuggestions laisse les plateformes vides (renseignées après le classement)', () => {
+	const ranked = rankSuggestions([{ seed: seed({ tmdbId: 1 }), candidates: [candidate({ tmdbId: 10 })] }], {
+		exclude: new Set(),
+		genreWeights: new Map()
+	});
+	assert.deepEqual(ranked[0].platforms, []);
 });
 
 test("buildEraAffinity apprend les époques du profil et reste neutre sans données", () => {

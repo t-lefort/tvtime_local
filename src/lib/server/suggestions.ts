@@ -7,6 +7,7 @@ import { getMoviesWithWatch, getShowsWithProgress } from './queries';
 import {
 	getGenres,
 	getMovieRecommendations,
+	getProviders,
 	getTvRecommendations,
 	type TmdbMovieSummary,
 	type TmdbShowSummary
@@ -14,16 +15,19 @@ import {
 import {
 	buildEraAffinity,
 	buildGenreWeights,
+	canonicalPlatforms,
+	collectPlatforms,
 	movieSeedWeight,
 	rankSuggestions,
 	ratingGenreFactor,
 	showSeedWeight,
+	type PlatformOption,
 	type Suggestion,
 	type SuggestionCandidate,
 	type SuggestionSeed
 } from './suggestions-utils';
 
-export type { Suggestion } from './suggestions-utils';
+export type { Platform, PlatformOption, Suggestion } from './suggestions-utils';
 
 /** Nombre de titres de la bibliothèque utilisés comme graines, par type de média. */
 const MAX_SEEDS = 8;
@@ -33,6 +37,10 @@ const DEFAULT_MOVIE_RUNTIME = 110;
 
 const RECOMMENDATIONS_TTL_MS = 6 * 60 * 60 * 1000;
 const GENRES_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PROVIDERS_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Appels de plateformes menés de front (une requête TMDB par suggestion classée). */
+const PROVIDERS_CONCURRENCY = 8;
 
 // Cache mémoire des réponses TMDB : les recommandations bougent peu et la page
 // en agrège jusqu'à 2 × MAX_SEEDS appels, inutile de les refaire à chaque visite.
@@ -104,9 +112,43 @@ async function recommendationsFor(
 	);
 }
 
+/**
+ * Complète les suggestions classées avec leurs plateformes de streaming (région
+ * WATCH_REGION), pour permettre le filtrage sur la page. Les recommandations TMDB
+ * ne les portent pas : une requête par titre, plafonnée en parallélisme et mise
+ * en cache. Un titre dont les plateformes sont inconnues reste suggéré, sans
+ * plateforme (il n'apparaîtra donc sous aucun filtre).
+ */
+async function withPlatforms(kind: 'tv' | 'movie', suggestions: Suggestion[]): Promise<Suggestion[]> {
+	const filled: Suggestion[] = [];
+	let next = 0;
+	const worker = async () => {
+		while (next < suggestions.length) {
+			const index = next++;
+			const suggestion = suggestions[index];
+			let platforms: Suggestion['platforms'] = [];
+			try {
+				const providers = await cached(`providers:${kind}:${suggestion.tmdbId}`, PROVIDERS_TTL_MS, () =>
+					getProviders(kind, suggestion.tmdbId)
+				);
+				platforms = canonicalPlatforms(providers?.streaming ?? []);
+			} catch {
+				platforms = [];
+			}
+			filled[index] = { ...suggestion, platforms };
+		}
+	};
+	await Promise.all(
+		Array.from({ length: Math.min(PROVIDERS_CONCURRENCY, suggestions.length) }, worker)
+	);
+	return filled;
+}
+
 export interface SuggestionsResult {
 	series: Suggestion[];
 	films: Suggestion[];
+	/** Plateformes proposées au filtrage, par onglet. */
+	platforms: { series: PlatformOption[]; films: PlatformOption[] };
 }
 
 export async function getSuggestions(userId: number): Promise<SuggestionsResult> {
@@ -165,16 +207,28 @@ export async function getSuggestions(userId: number): Promise<SuggestionsResult>
 		movies.map((m) => ({ date: m.releaseDate, weight: movieSeedWeight(m) }))
 	);
 
+	const [series, films] = await Promise.all([
+		withPlatforms(
+			'tv',
+			rankSuggestions(showEntries, {
+				exclude: new Set(shows.map((s) => s.tmdbId)),
+				genreWeights: tvGenreWeights,
+				eraAffinity: tvEraAffinity
+			})
+		),
+		withPlatforms(
+			'movie',
+			rankSuggestions(movieEntries, {
+				exclude: new Set(movies.map((m) => m.tmdbId)),
+				genreWeights: movieGenreWeights,
+				eraAffinity: movieEraAffinity
+			})
+		)
+	]);
+
 	return {
-		series: rankSuggestions(showEntries, {
-			exclude: new Set(shows.map((s) => s.tmdbId)),
-			genreWeights: tvGenreWeights,
-			eraAffinity: tvEraAffinity
-		}),
-		films: rankSuggestions(movieEntries, {
-			exclude: new Set(movies.map((m) => m.tmdbId)),
-			genreWeights: movieGenreWeights,
-			eraAffinity: movieEraAffinity
-		})
+		series,
+		films,
+		platforms: { series: collectPlatforms(series), films: collectPlatforms(films) }
 	};
 }

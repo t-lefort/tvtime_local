@@ -28,11 +28,94 @@ export interface SuggestionCandidate {
 	genreIds: number[];
 }
 
+/** Plateforme de streaming où un titre est disponible (abonnement ou gratuit). */
+export interface Platform {
+	name: string;
+	logoPath: string | null;
+}
+
 /** Suggestion finale, prête à afficher. */
 export interface Suggestion extends Omit<SuggestionCandidate, 'genreIds' | 'voteCount' | 'popularity'> {
 	score: number;
 	/** Titres de la bibliothèque qui ont amené cette suggestion (les plus affinitaires). */
 	because: string[];
+	/** Plateformes de streaming de la région, renseignées après le classement. */
+	platforms: Platform[];
+}
+
+/** Plateforme proposée au filtrage, avec le nombre de suggestions concernées. */
+export interface PlatformOption extends Platform {
+	count: number;
+}
+
+/**
+ * Déclinaisons JustWatch d'une même plateforme : offre avec publicité, palier
+ * premium, revente via une boutique tierce. Sans regroupement, le filtre listerait
+ * « Netflix », « Netflix Standard with Ads », « Paramount+ Amazon Channel »…
+ */
+const PLATFORM_VARIANT_SUFFIXES = [
+	' Standard with Ads',
+	' Basic with Ads',
+	' with Ads',
+	' Amazon Channel',
+	' Apple TV Channel',
+	' Roku Premium Channel',
+	' Channel',
+	' Premium'
+];
+
+/** Nom de plateforme débarrassé de ses suffixes de déclinaison. */
+function stripVariant(name: string): string {
+	let stripped = name.trim();
+	for (let changed = true; changed; ) {
+		changed = false;
+		for (const suffix of PLATFORM_VARIANT_SUFFIXES) {
+			if (stripped.length > suffix.length && stripped.endsWith(suffix)) {
+				stripped = stripped.slice(0, -suffix.length).trim();
+				changed = true;
+			}
+		}
+	}
+	return stripped;
+}
+
+/** Clé de regroupement : « Paramount+ » et « Paramount Plus » sont la même plateforme. */
+function platformKey(name: string): string {
+	return name.replace(/\+/g, ' Plus').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Regroupe les déclinaisons d'une même plateforme et garde le nom le plus court
+ * (le nom « nu » de la plateforme) avec un logo non vide s'il en existe un.
+ */
+export function canonicalPlatforms(platforms: Platform[]): Platform[] {
+	const byKey = new Map<string, Platform>();
+	for (const platform of platforms) {
+		const name = stripVariant(platform.name);
+		if (!name) continue;
+		const kept = byKey.get(platformKey(name));
+		byKey.set(platformKey(name), {
+			name: kept && kept.name.length <= name.length ? kept.name : name,
+			logoPath: kept?.logoPath ?? platform.logoPath
+		});
+	}
+	return [...byKey.values()];
+}
+
+/**
+ * Plateformes présentes dans une liste de suggestions, dédoublonnées et classées
+ * de la plus fournie à la moins fournie (puis par nom) : les choix du filtre.
+ */
+export function collectPlatforms(suggestions: { platforms: Platform[] }[]): PlatformOption[] {
+	const byName = new Map<string, PlatformOption>();
+	for (const suggestion of suggestions) {
+		for (const platform of suggestion.platforms) {
+			const option = byName.get(platform.name);
+			if (option) option.count += 1;
+			else byName.set(platform.name, { ...platform, count: 1 });
+		}
+	}
+	return [...byName.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 /** Note personnelle en dessous de laquelle un titre ne sert jamais de graine. */
@@ -218,7 +301,8 @@ export function rankSuggestions(
 					.slice()
 					.sort((a, b) => b.weight - a.weight)
 					.slice(0, MAX_BECAUSE)
-					.map((s) => s.title)
+					.map((s) => s.title),
+				platforms: []
 			};
 		})
 		.sort((a, b) => b.score - a.score)

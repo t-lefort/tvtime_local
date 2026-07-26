@@ -7,6 +7,7 @@ Self-hosted web app for tracking TV shows **and movies**, designed as a minimali
 - **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion
 - **Movies**: collection with filters (to watch, watched, favorites), mark watched/unwatched, rewatches, favorite
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
+- **For you**: personalized suggestions of shows and movies, based on your ratings, favorites and watch history — filterable by **streaming platform** (the platforms available in your region, grouped: no "with Ads" or reseller variants). Can be hidden from the profile settings
 - **Search**: add shows and movies via TMDB (French metadata)
 - **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page)
 - **Profile**: total screen time (shows + movies), watch counts per month, genre breakdown, ranking of watched shows

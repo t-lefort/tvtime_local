@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { addOrUpdateShow, followShow } from '$lib/server/shows';
 import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
-import { getSuggestions, type Suggestion } from '$lib/server/suggestions';
+import { getSuggestions, type PlatformOption, type Suggestion } from '$lib/server/suggestions';
 import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -10,12 +10,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Page désactivée dans les paramètres du profil
 	if (locals.user?.hideSuggestions) redirect(303, '/');
 	try {
-		const { series, films } = await getSuggestions(user.id);
-		return { series, films, error: null };
+		const { series, films, platforms } = await getSuggestions(user.id);
+		return { series, films, platforms, error: null };
 	} catch (e) {
 		return {
 			series: [] as Suggestion[],
 			films: [] as Suggestion[],
+			platforms: { series: [] as PlatformOption[], films: [] as PlatformOption[] },
 			error: e instanceof Error ? e.message : String(e)
 		};
 	}
