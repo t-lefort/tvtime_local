@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { episodes, shows, userShows, type Show } from './db/schema';
 import { extractCast, extractProviders, getSeasonEpisodes, getShowDetails } from './tmdb';
+import { getLocalizedEpisodeAirDates, localizedEpisodeAirDate } from './tvmaze';
 
 export interface AddShowOptions {
 	tvdbId?: number | null;
@@ -21,9 +22,18 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 	const details = await getShowDetails(tmdbId);
 	const providers = extractProviders(details['watch/providers']);
 	const cast = extractCast(details.credits);
+	const tvdbId = opts.tvdbId ?? details.external_ids?.tvdb_id ?? null;
+	const isActive = details.status !== 'Ended' && details.status !== 'Canceled';
+	const localizedAirDates =
+		tvdbId && isActive
+			? await getLocalizedEpisodeAirDates(tvdbId).catch((error) => {
+					console.warn(`[shows] horaires TVmaze indisponibles pour ${details.name}:`, error);
+					return new Map<string, string>();
+				})
+			: new Map<string, string>();
 
 	const base = {
-		tvdbId: opts.tvdbId ?? details.external_ids?.tvdb_id ?? null,
+		tvdbId,
 		name: details.name || details.original_name,
 		originalName: details.original_name,
 		overview: details.overview || null,
@@ -51,6 +61,8 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 		const eps = await getSeasonEpisodes(tmdbId, season.season_number);
 		for (const ep of eps) {
 			seenTmdbIds.add(ep.id);
+			const airDate =
+				localizedEpisodeAirDate(localizedAirDates, ep.season_number, ep.episode_number) ?? ep.air_date;
 			try {
 				db.insert(episodes)
 					.values({
@@ -60,7 +72,7 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 						episodeNumber: ep.episode_number,
 						name: ep.name,
 						overview: ep.overview,
-						airDate: ep.air_date,
+						airDate,
 						runtime: ep.runtime,
 						stillPath: ep.still_path
 					})
@@ -71,7 +83,7 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 							episodeNumber: ep.episode_number,
 							name: ep.name,
 							overview: ep.overview,
-							airDate: ep.air_date,
+							airDate,
 							runtime: ep.runtime,
 							stillPath: ep.still_path
 						}

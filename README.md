@@ -59,6 +59,7 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
 | `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
+| `APP_TIMEZONE` | Timezone used for episode availability dates (default `Europe/Paris`) |
 
 ## Deploying to a server (CI + Portainer)
 
@@ -80,4 +81,4 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 
 SvelteKit (Svelte 5) · SQLite (better-sqlite3 + Drizzle) · Tailwind CSS v4 · adapter-node · Docker
 
-This product uses the TMDB API but is not endorsed or certified by TMDB.
+This product uses the TMDB API but is not endorsed or certified by TMDB. Episode air times are provided by [TVmaze](https://www.tvmaze.com/).

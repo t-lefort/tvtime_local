@@ -2,6 +2,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { shows, userShows, watches } from '$lib/server/db/schema';
+import { appToday } from '$lib/server/dates';
 import { getEpisodesWithWatch, getShowsWithProgress, type EpisodeWithWatch } from '$lib/server/queries';
 import { addOrUpdateShow, followShow, getUserShow, unfollowShow } from '$lib/server/shows';
 import { requireUser } from '$lib/server/users';
@@ -34,7 +35,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const backHref = q ? `/recherche?type=series&q=${encodeURIComponent(q)}` : '/series';
-	const today = new Date().toISOString().slice(0, 10);
+	const today = appToday();
 	const localizedMedia = getShowLocalizedMedia(tmdbId).catch(() => []);
 
 	const local = getShowsWithProgress(user.id, { tmdbId })[0];
@@ -169,11 +170,12 @@ export const actions: Actions = {
 		const user = requireUser(locals);
 		const id = requireFollowedShow(user.id, tmdbIdFromParam(params.tmdbId)).show.id;
 		const seasonNumber = Number((await request.formData()).get('seasonNumber'));
+		const today = appToday();
 		db.run(sql`
 			INSERT INTO watches (user_id, episode_id)
 			SELECT ${user.id}, e.id FROM episodes e
 			WHERE e.show_id = ${id} AND e.season_number = ${seasonNumber}
-				AND e.air_date IS NOT NULL AND e.air_date <= date('now')
+				AND e.air_date IS NOT NULL AND e.air_date <= ${today}
 				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id AND w.user_id = ${user.id})
 		`);
 	},
@@ -184,13 +186,14 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const seasonNumber = Number(data.get('seasonNumber'));
 		const episodeNumber = Number(data.get('episodeNumber'));
+		const today = appToday();
 		db.run(sql`
 			INSERT INTO watches (user_id, episode_id)
 			SELECT ${user.id}, e.id FROM episodes e
 			WHERE e.show_id = ${id} AND e.season_number > 0
 				AND (e.season_number < ${seasonNumber}
 					OR (e.season_number = ${seasonNumber} AND e.episode_number <= ${episodeNumber}))
-				AND e.air_date IS NOT NULL AND e.air_date <= date('now')
+				AND e.air_date IS NOT NULL AND e.air_date <= ${today}
 				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id AND w.user_id = ${user.id})
 		`);
 	},

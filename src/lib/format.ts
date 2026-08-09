@@ -1,5 +1,7 @@
 /** Utilitaires de formatage partagés client/serveur (locale fr-FR). */
 
+import { localDateString } from './date';
+
 export function tmdbImg(path: string | null | undefined, size: 'w92' | 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w342'): string | null {
 	return path ? `https://image.tmdb.org/t/p/${size}${path}` : null;
 }
@@ -28,7 +30,7 @@ const shortFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'shor
 const monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: '2-digit' });
 
 function todayStr(): string {
-	return new Date().toISOString().slice(0, 10);
+	return localDateString();
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -38,8 +40,7 @@ function addDays(dateStr: string, n: number): string {
 }
 
 /** "Aujourd'hui", "Demain" ou "vendredi 10 juillet [2027]" pour un YYYY-MM-DD. */
-export function dayLabel(dateStr: string): string {
-	const today = todayStr();
+export function dayLabel(dateStr: string, today = todayStr()): string {
 	if (dateStr === today) return "Aujourd'hui";
 	if (dateStr === addDays(today, 1)) return 'Demain';
 	const d = new Date(dateStr + 'T12:00:00Z');
@@ -47,8 +48,8 @@ export function dayLabel(dateStr: string): string {
 	return fmt.format(d);
 }
 
-export function daysUntil(dateStr: string): number {
-	const a = new Date(todayStr() + 'T00:00:00Z').getTime();
+export function daysUntil(dateStr: string, today = todayStr()): number {
+	const a = new Date(today + 'T00:00:00Z').getTime();
 	const b = new Date(dateStr + 'T00:00:00Z').getTime();
 	return Math.round((b - a) / 86_400_000);
 }

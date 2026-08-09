@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { shows, watches } from '$lib/server/db/schema';
+import { appToday } from '$lib/server/dates';
 import { getEpisodesWithWatch } from '$lib/server/queries';
 import { getUserShow } from '$lib/server/shows';
 import { getUserById, requireUser } from '$lib/server/users';
@@ -104,7 +105,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		directors,
 		writers,
 		hideEpisodeOverviews: Boolean(getUserById(user.id)?.hideEpisodeOverviews),
-		today: new Date().toISOString().slice(0, 10)
+		today: appToday()
 	};
 };
 

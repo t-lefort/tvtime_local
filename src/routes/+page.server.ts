@@ -1,5 +1,6 @@
 import { db } from '$lib/server/db';
 import { watches } from '$lib/server/db/schema';
+import { appToday } from '$lib/server/dates';
 import { getUpcoming, getWatchNext } from '$lib/server/queries';
 import { getUserById, requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
@@ -9,6 +10,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	return {
 		watchNext: getWatchNext(user.id),
 		upcoming: getUpcoming(user.id),
+		today: appToday(),
 		hideEpisodeOverviews: Boolean(getUserById(user.id)?.hideEpisodeOverviews)
 	};
 };

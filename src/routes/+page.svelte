@@ -116,9 +116,9 @@
 		{#each upcomingGroups as [date, eps] (date)}
 			<section>
 				<h2 class="mb-2 flex items-baseline gap-2 text-sm font-semibold tracking-wide text-brand uppercase">
-					{dayLabel(date)}
+					{dayLabel(date, data.today)}
 					<span class="text-xs font-normal text-mut normal-case">
-						{daysUntil(date) === 1 ? '' : `dans ${daysUntil(date)} jours`}
+						{daysUntil(date, data.today) === 1 ? '' : `dans ${daysUntil(date, data.today)} jours`}
 					</span>
 				</h2>
 				<ul class="space-y-2">

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from './db';
 import type { Movie, Show } from './db/schema';
+import { appToday } from './dates';
 
 /** Durée par défaut (min) quand TMDB ne connaît pas le runtime d'un film. */
 const DEFAULT_MOVIE_RUNTIME = 110;
@@ -40,6 +41,7 @@ interface UnwatchedRow {
 
 /** Prochain épisode à voir par série suivie (non arrêtée) du profil, trié par activité récente. */
 export function getWatchNext(userId: number): WatchNextItem[] {
+	const today = appToday();
 	const rows = db.all<UnwatchedRow>(sql`
 		SELECT e.id AS episodeId, e.show_id AS showId, s.tmdb_id AS showTmdbId, e.season_number AS seasonNumber,
 			e.episode_number AS episodeNumber, e.name AS episodeName, e.overview AS episodeOverview,
@@ -51,7 +53,7 @@ export function getWatchNext(userId: number): WatchNextItem[] {
 		JOIN user_shows us ON us.show_id = s.id AND us.user_id = ${userId}
 		WHERE us.archived = 0
 			AND e.season_number > 0
-			AND e.air_date IS NOT NULL AND e.air_date <= date('now')
+			AND e.air_date IS NOT NULL AND e.air_date <= ${today}
 			AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = e.id AND w.user_id = ${userId})
 		ORDER BY e.show_id, e.season_number, e.episode_number
 	`);
@@ -113,6 +115,7 @@ export interface UpcomingItem {
 
 /** Épisodes à venir des séries suivies non arrêtées du profil, sur 1 an. */
 export function getUpcoming(userId: number): UpcomingItem[] {
+	const today = appToday();
 	return db.all<UpcomingItem>(sql`
 		SELECT e.id AS episodeId, s.id AS showId, s.tmdb_id AS showTmdbId, s.name AS showName,
 			s.poster_path AS posterPath, e.season_number AS seasonNumber, e.episode_number AS episodeNumber,
@@ -121,8 +124,8 @@ export function getUpcoming(userId: number): UpcomingItem[] {
 		JOIN shows s ON s.id = e.show_id
 		JOIN user_shows us ON us.show_id = s.id AND us.user_id = ${userId}
 		WHERE us.archived = 0
-			AND e.air_date > date('now')
-			AND e.air_date <= date('now', '+365 days')
+			AND e.air_date > ${today}
+			AND e.air_date <= date(${today}, '+365 days')
 		ORDER BY e.air_date, s.name COLLATE NOCASE, e.season_number, e.episode_number
 		LIMIT 300
 	`);
@@ -160,6 +163,7 @@ export function getShowsWithProgress(
 	userId: number,
 	filter?: { id?: number; tmdbId?: number }
 ): ShowWithProgress[] {
+	const today = appToday();
 	const where =
 		filter?.id !== undefined
 			? sql`AND s.id = ${filter.id}`
@@ -174,7 +178,7 @@ export function getShowsWithProgress(
 			us.archived, us.favorite, us.rating, s.last_synced_at AS lastSyncedAt,
 			s.watch_providers AS watchProviders, s.cast,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0
-				AND e.air_date IS NOT NULL AND e.air_date <= date('now')) AS airedCount,
+				AND e.air_date IS NOT NULL AND e.air_date <= ${today}) AS airedCount,
 			(SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.id AND e.season_number > 0) AS totalCount,
 			(SELECT COUNT(DISTINCT w.episode_id) FROM watches w JOIN episodes e ON e.id = w.episode_id
 				WHERE e.show_id = s.id AND e.season_number > 0 AND w.user_id = ${userId}) AS watchedCount,
