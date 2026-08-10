@@ -76,17 +76,31 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 	}
 
 	const seenTmdbIds = new Set(remoteEpisodes.map(({ ep }) => ep.id));
+	const existingEpisodes = db.all<{
+		id: number;
+		tmdbId: number;
+		episodeNumber: number;
+		airDate: string | null;
+	}>(sql`
+		SELECT id, tmdb_id AS tmdbId, episode_number AS episodeNumber, air_date AS airDate
+		FROM episodes
+		WHERE show_id = ${show.id}
+	`);
+	const remoteByAirDateAndNumber = new Map(
+		remoteEpisodes
+			.filter(({ airDate }) => airDate)
+			.map(({ ep, airDate }) => [`${ep.episode_number}:${airDate}`, ep.id])
+	);
+
 	db.transaction((tx) => {
 		// TMDB peut déplacer des épisodes d'une saison à une autre. On libère d'abord
 		// leurs anciennes positions pour éviter les collisions sur (série, saison, épisode),
 		// tout en conservant les ids locaux auxquels l'historique est rattaché.
-		for (const { ep } of remoteEpisodes) {
-			tx.run(sql`
-				UPDATE episodes
-				SET season_number = -tmdb_id, episode_number = 0
-				WHERE show_id = ${show.id} AND tmdb_id = ${ep.id}
-			`);
-		}
+		tx.run(sql`
+			UPDATE episodes
+			SET season_number = -tmdb_id, episode_number = 0
+			WHERE show_id = ${show.id}
+		`);
 
 		for (const { ep, airDate } of remoteEpisodes) {
 			tx.insert(episodes)
@@ -114,6 +128,22 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 					}
 				})
 				.run();
+		}
+
+		// Certains déplacements recréent l'épisode avec un nouvel id TMDB. Quand son
+		// numéro et sa date sont inchangés, on rattache les visionnages au nouvel id.
+		for (const existing of existingEpisodes) {
+			if (seenTmdbIds.has(existing.tmdbId) || !existing.airDate) continue;
+			const replacementTmdbId = remoteByAirDateAndNumber.get(
+				`${existing.episodeNumber}:${existing.airDate}`
+			);
+			if (!replacementTmdbId) continue;
+			tx.run(sql`
+				UPDATE watches
+				SET episode_id = (SELECT id FROM episodes WHERE tmdb_id = ${replacementTmdbId})
+				WHERE episode_id = ${existing.id}
+			`);
+			tx.run(sql`DELETE FROM episodes WHERE id = ${existing.id}`);
 		}
 
 		// Épisodes supprimés côté TMDB : on les retire s'ils n'ont pas été vus.
