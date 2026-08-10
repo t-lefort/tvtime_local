@@ -57,7 +57,7 @@
 			{#each data.watchNext as item (item.showId)}
 				<li class="flex items-stretch overflow-hidden rounded-xl bg-card">
 					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3 md:gap-5">
-						<div class="h-20 w-32 shrink-0 self-stretch md:h-auto md:min-h-28 md:w-48">
+						<div class="h-20 w-32 shrink-0 md:h-28 md:w-48">
 							{#if item.stillPath}
 								<img
 									src={tmdbImg(item.stillPath, 'w342')}
