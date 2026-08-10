@@ -61,8 +61,11 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 		const eps = await getSeasonEpisodes(tmdbId, season.season_number);
 		for (const ep of eps) {
 			seenTmdbIds.add(ep.id);
-			const airDate =
-				localizedEpisodeAirDate(localizedAirDates, ep.season_number, ep.episode_number) ?? ep.air_date;
+			const airDate = localizedEpisodeAirDate(
+				localizedAirDates,
+				ep.episode_number,
+				ep.air_date
+			) ?? ep.air_date;
 			try {
 				db.insert(episodes)
 					.values({
