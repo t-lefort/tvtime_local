@@ -29,6 +29,9 @@
 
 	const shown = $derived(expanded && fullCast ? fullCast : cast);
 	const extraCount = $derived(fullCast ? fullCast.length - cast.length : 0);
+	// Vue dépliée : les personnes sans photo passent à la fin, en simple liste de noms.
+	const shownWithPhoto = $derived(shown.filter((member) => member.profilePath));
+	const shownWithoutPhoto = $derived(shown.filter((member) => !member.profilePath));
 
 	async function toggle() {
 		if (expanded) {
@@ -107,11 +110,33 @@
 		{/if}
 
 		{#if expanded}
-			<div class="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
-				{#each shown as member (member.id)}
-					{@render person(member)}
+			<ul class="flex flex-wrap gap-x-3 gap-y-4 py-2">
+				{#each shownWithPhoto as member (member.id)}
+					<li class="w-20 shrink-0">{@render person(member)}</li>
 				{/each}
-			</div>
+			</ul>
+
+			{#if shownWithoutPhoto.length}
+				<section class="mt-4 border-t border-line/70 pt-4">
+					<h3 class="text-xs font-semibold tracking-wide text-mut uppercase">
+						Sans photo <span class="font-normal">({shownWithoutPhoto.length})</span>
+					</h3>
+					<div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{#each shownWithoutPhoto as member (member.id)}
+							<a
+								href="/personnes/{member.id}"
+								class="block min-w-0 rounded-lg bg-card px-3 py-2.5 ring-1 ring-line transition-colors hover:ring-brand"
+								title="Voir la filmographie de {member.name}"
+							>
+								<p class="text-sm leading-snug font-medium">{member.name}</p>
+								{#if member.character}
+									<p class="mt-0.5 text-xs leading-snug text-mut">{member.character}</p>
+								{/if}
+							</a>
+						{/each}
+					</div>
+				</section>
+			{/if}
 		{:else}
 			<ul class="-mx-4 flex gap-3 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 				{#each shown as member (member.id)}
