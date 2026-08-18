@@ -4,7 +4,7 @@ Self-hosted web app for tracking TV shows **and movies**, designed as a minimali
 
 - **Feed**: **To watch** tab (the next episode of each show, ready to check off) and **Upcoming** tab (upcoming air dates, grouped by date)
 - **Shows**: your library with progress bars, filters (watching, up to date, stopped, finished, not started) and a sort order (most recent activity or alphabetical)
-- **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion
+- **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion. The cast shows the main billing, with a **full cast** button that loads every credited actor from TMDB (also on movies)
 - **Movies**: collection with filters (to watch, watched, favorites) and the same sort order, mark watched/unwatched, rewatches, favorite
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **For you**: personalized suggestions of shows and movies, based on your ratings, favorites and watch history — filterable by **streaming platform** (the platforms available in your region, grouped: no "with Ads" or reseller variants). Can be hidden from the profile settings

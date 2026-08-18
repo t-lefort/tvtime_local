@@ -183,7 +183,7 @@
 	<p class="mt-4 text-sm leading-relaxed text-mut">{show.overview}</p>
 {/if}
 
-<CastList cast={show.cast} />
+<CastList cast={show.cast} fullHref="/casting/series/{show.tmdbId}" />
 
 <LocalizedMedia variants={data.localizedMedia} />
 
