@@ -11,6 +11,7 @@ export interface WatchNextItem {
 	showTmdbId: number;
 	showName: string;
 	posterPath: string | null;
+	backdropPath: string | null;
 	episodeId: number;
 	seasonNumber: number;
 	episodeNumber: number;
@@ -36,6 +37,7 @@ interface UnwatchedRow {
 	stillPath: string | null;
 	showName: string;
 	posterPath: string | null;
+	backdropPath: string | null;
 	followedAt: string;
 }
 
@@ -47,6 +49,7 @@ export function getWatchNext(userId: number): WatchNextItem[] {
 			e.episode_number AS episodeNumber, e.name AS episodeName, e.overview AS episodeOverview,
 			e.air_date AS airDate, e.runtime AS runtime,
 			e.still_path AS stillPath, s.name AS showName, s.poster_path AS posterPath,
+			s.backdrop_path AS backdropPath,
 			us.followed_at AS followedAt
 		FROM episodes e
 		JOIN shows s ON s.id = e.show_id
@@ -79,6 +82,7 @@ export function getWatchNext(userId: number): WatchNextItem[] {
 			showTmdbId: r.showTmdbId,
 			showName: r.showName,
 			posterPath: r.posterPath,
+			backdropPath: r.backdropPath,
 			episodeId: r.episodeId,
 			seasonNumber: r.seasonNumber,
 			episodeNumber: r.episodeNumber,

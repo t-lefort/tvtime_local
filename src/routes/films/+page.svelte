@@ -1,8 +1,19 @@
 <script lang="ts">
 	import Poster from '$lib/components/Poster.svelte';
+	import SortToggle from '$lib/components/SortToggle.svelte';
 	import { yearOf } from '$lib/format';
+	import { DEFAULT_SORT } from '$lib/sort';
 
 	let { data } = $props();
+
+	/** Conserve l'ordre courant en changeant de filtre (et inversement). */
+	function filterHref(key: string) {
+		const params = new URLSearchParams();
+		if (key !== 'tous') params.set('filtre', key);
+		if (data.sort !== DEFAULT_SORT) params.set('tri', data.sort);
+		const query = params.toString();
+		return query ? `/films?${query}` : '/films';
+	}
 
 	const chips = [
 		{ key: 'tous', label: 'Tous' },
@@ -21,10 +32,10 @@
 
 <h1 class="mb-4 text-2xl font-bold">Films</h1>
 
-<div class="scrollbar-none -mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1">
+<div class="scrollbar-none -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
 	{#each chips as chip (chip.key)}
 		<a
-			href="/films{chip.key === 'tous' ? '' : `?filtre=${chip.key}`}"
+			href={filterHref(chip.key)}
 			data-sveltekit-replacestate
 			class="shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
 				{data.filter === chip.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
@@ -34,6 +45,12 @@
 		</a>
 	{/each}
 </div>
+
+<SortToggle
+	base="/films"
+	sort={data.sort}
+	params={data.filter === 'tous' ? {} : { filtre: data.filter }}
+/>
 
 {#if data.movies.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">

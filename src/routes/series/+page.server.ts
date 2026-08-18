@@ -1,3 +1,4 @@
+import { parseSort } from '$lib/sort';
 import { getShowsWithProgress, type ShowState } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
@@ -13,6 +14,7 @@ const FILTERS: Record<string, ShowState | null> = {
 
 export const load: PageServerLoad = ({ url, locals }) => {
 	const filter = url.searchParams.get('filtre') ?? 'toutes';
+	const sort = parseSort(url.searchParams.get('tri'));
 	const all = getShowsWithProgress(requireUser(locals).id);
 
 	const counts: Record<string, number> = { toutes: all.length };
@@ -33,13 +35,17 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		lastWatchedAt: s.lastWatchedAt
 	}));
 
-	// Les plus récemment regardées d'abord, puis alphabétique
-	shows.sort((a, b) => {
-		if (a.lastWatchedAt && b.lastWatchedAt) return b.lastWatchedAt.localeCompare(a.lastWatchedAt);
-		if (a.lastWatchedAt) return -1;
-		if (b.lastWatchedAt) return 1;
-		return a.name.localeCompare(b.name, 'fr');
-	});
+	if (sort === 'alpha') {
+		shows.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+	} else {
+		// Les plus récemment regardées d'abord, puis alphabétique
+		shows.sort((a, b) => {
+			if (a.lastWatchedAt && b.lastWatchedAt) return b.lastWatchedAt.localeCompare(a.lastWatchedAt);
+			if (a.lastWatchedAt) return -1;
+			if (b.lastWatchedAt) return 1;
+			return a.name.localeCompare(b.name, 'fr');
+		});
+	}
 
-	return { shows, filter, counts };
+	return { shows, filter, sort, counts };
 };

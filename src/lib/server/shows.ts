@@ -1,7 +1,13 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { episodes, shows, userShows, type Show } from './db/schema';
-import { extractCast, extractProviders, getSeasonEpisodes, getShowDetails } from './tmdb';
+import {
+	extractCast,
+	extractProviders,
+	getSeasonEpisodes,
+	getShowDetails,
+	type TmdbEpisode
+} from './tmdb';
 import { getLocalizedEpisodeAirDates, localizedEpisodeAirDate } from './tvmaze';
 
 export interface AddShowOptions {
@@ -56,18 +62,62 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 		.returning()
 		.get();
 
-	const seenTmdbIds = new Set<number>();
+	const remoteEpisodes: { ep: TmdbEpisode; airDate: string | null }[] = [];
 	for (const season of details.seasons) {
 		const eps = await getSeasonEpisodes(tmdbId, season.season_number);
 		for (const ep of eps) {
-			seenTmdbIds.add(ep.id);
-			const airDate =
-				localizedEpisodeAirDate(localizedAirDates, ep.season_number, ep.episode_number) ?? ep.air_date;
-			try {
-				db.insert(episodes)
-					.values({
-						showId: show.id,
-						tmdbId: ep.id,
+			const airDate = localizedEpisodeAirDate(
+				localizedAirDates,
+				ep.episode_number,
+				ep.air_date
+			) ?? ep.air_date;
+			remoteEpisodes.push({ ep, airDate });
+		}
+	}
+
+	const seenTmdbIds = new Set(remoteEpisodes.map(({ ep }) => ep.id));
+	const existingEpisodes = db.all<{
+		id: number;
+		tmdbId: number;
+		episodeNumber: number;
+		airDate: string | null;
+	}>(sql`
+		SELECT id, tmdb_id AS tmdbId, episode_number AS episodeNumber, air_date AS airDate
+		FROM episodes
+		WHERE show_id = ${show.id}
+	`);
+	const remoteByAirDateAndNumber = new Map(
+		remoteEpisodes
+			.filter(({ airDate }) => airDate)
+			.map(({ ep, airDate }) => [`${ep.episode_number}:${airDate}`, ep.id])
+	);
+
+	db.transaction((tx) => {
+		// TMDB peut déplacer des épisodes d'une saison à une autre. On libère d'abord
+		// leurs anciennes positions pour éviter les collisions sur (série, saison, épisode),
+		// tout en conservant les ids locaux auxquels l'historique est rattaché.
+		tx.run(sql`
+			UPDATE episodes
+			SET season_number = -tmdb_id, episode_number = 0
+			WHERE show_id = ${show.id}
+		`);
+
+		for (const { ep, airDate } of remoteEpisodes) {
+			tx.insert(episodes)
+				.values({
+					showId: show.id,
+					tmdbId: ep.id,
+					seasonNumber: ep.season_number,
+					episodeNumber: ep.episode_number,
+					name: ep.name,
+					overview: ep.overview,
+					airDate,
+					runtime: ep.runtime,
+					stillPath: ep.still_path
+				})
+				.onConflictDoUpdate({
+					target: episodes.tmdbId,
+					set: {
 						seasonNumber: ep.season_number,
 						episodeNumber: ep.episode_number,
 						name: ep.name,
@@ -75,34 +125,35 @@ export async function addOrUpdateShow(tmdbId: number, opts: AddShowOptions = {})
 						airDate,
 						runtime: ep.runtime,
 						stillPath: ep.still_path
-					})
-					.onConflictDoUpdate({
-						target: episodes.tmdbId,
-						set: {
-							seasonNumber: ep.season_number,
-							episodeNumber: ep.episode_number,
-							name: ep.name,
-							overview: ep.overview,
-							airDate,
-							runtime: ep.runtime,
-							stillPath: ep.still_path
-						}
-					})
-					.run();
-			} catch (e) {
-				// Collision possible sur (show, saison, numéro) si TMDB renumérote — on ignore, corrigé au sync suivant
-				console.warn(`[shows] épisode ignoré S${ep.season_number}E${ep.episode_number} de ${base.name}:`, e);
-			}
+					}
+				})
+				.run();
 		}
-	}
 
-	// Épisodes supprimés côté TMDB : on les retire s'ils n'ont pas été vus
-	db.run(sql`
-		DELETE FROM episodes
-		WHERE show_id = ${show.id}
-			AND tmdb_id NOT IN ${seenTmdbIds.size ? sql`(${sql.join([...seenTmdbIds].map((id) => sql`${id}`), sql`, `)})` : sql`(-1)`}
-			AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = episodes.id)
-	`);
+		// Certains déplacements recréent l'épisode avec un nouvel id TMDB. Quand son
+		// numéro et sa date sont inchangés, on rattache les visionnages au nouvel id.
+		for (const existing of existingEpisodes) {
+			if (seenTmdbIds.has(existing.tmdbId) || !existing.airDate) continue;
+			const replacementTmdbId = remoteByAirDateAndNumber.get(
+				`${existing.episodeNumber}:${existing.airDate}`
+			);
+			if (!replacementTmdbId) continue;
+			tx.run(sql`
+				UPDATE watches
+				SET episode_id = (SELECT id FROM episodes WHERE tmdb_id = ${replacementTmdbId})
+				WHERE episode_id = ${existing.id}
+			`);
+			tx.run(sql`DELETE FROM episodes WHERE id = ${existing.id}`);
+		}
+
+		// Épisodes supprimés côté TMDB : on les retire s'ils n'ont pas été vus.
+		tx.run(sql`
+			DELETE FROM episodes
+			WHERE show_id = ${show.id}
+				AND tmdb_id NOT IN ${seenTmdbIds.size ? sql`(${sql.join([...seenTmdbIds].map((id) => sql`${id}`), sql`, `)})` : sql`(-1)`}
+				AND NOT EXISTS (SELECT 1 FROM watches w WHERE w.episode_id = episodes.id)
+		`);
+	});
 
 	return show;
 }

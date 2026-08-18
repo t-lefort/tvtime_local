@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
 	collectionPosition,
+	extractCast,
 	extractCollection,
 	extractCompanies,
 	extractCrew,
 	isNonFictionGenre,
 	orderCollectionParts,
+	type TmdbCastMember,
 	type TmdbCrewMember,
 	type TmdbMovieSummary
 } from '../src/lib/server/tmdb';
@@ -106,4 +108,34 @@ test('collectionPosition situe le film dans la saga, 0 si absent', () => {
 	assert.equal(collectionPosition(ordered, 2), 2);
 	assert.equal(collectionPosition(ordered, 1), 1);
 	assert.equal(collectionPosition(ordered, 404), 0);
+});
+
+const actor = (id: number, name: string, character: string, order: number): TmdbCastMember => ({
+	id,
+	name,
+	character,
+	profile_path: null,
+	order
+});
+
+test('extractCast trie par générique et fusionne les rôles multiples', () => {
+	const result = extractCast({
+		cast: [
+			actor(2, 'Actrice B', 'Rôle B', 1),
+			actor(1, 'Acteur A', 'Rôle A', 0),
+			actor(1, 'Acteur A', 'Rôle A bis', 5)
+		]
+	});
+	assert.deepEqual(result, [
+		{ id: 1, name: 'Acteur A', character: 'Rôle A / Rôle A bis', profilePath: null },
+		{ id: 2, name: 'Actrice B', character: 'Rôle B', profilePath: null }
+	]);
+	assert.deepEqual(extractCast(undefined), []);
+});
+
+test('extractCast plafonne à 15 acteurs, ou à la limite demandée', () => {
+	const many = Array.from({ length: 40 }, (_, i) => actor(i + 1, `Acteur ${i + 1}`, '', i));
+	assert.equal(extractCast({ cast: many }).length, 15);
+	assert.equal(extractCast({ cast: many }, 100).length, 40);
+	assert.equal(extractCast({ cast: many }, 3).length, 3);
 });
