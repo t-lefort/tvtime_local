@@ -27,6 +27,10 @@
 		if (type !== 'goto') hasLocalInput = false;
 	});
 
+	/** Puces de suggestion : une ligne qui défile sur mobile, repliée dès `sm`. */
+	const SUGGESTION_ROW =
+		'-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0';
+
 	const DEPARTMENT_FR: Record<string, string> = {
 		Acting: 'Acteur / Actrice',
 		Directing: 'Réalisation',
@@ -169,15 +173,17 @@
 </div>
 
 {#if hasSuggestions}
-	<section class="mb-5 space-y-4">
+	<section class="mb-5 space-y-3">
 		{#if companies.length}
 			<div>
 				<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Sociétés de production</h2>
-				<div class="flex flex-wrap gap-2">
+				<!-- Sur mobile, une seule ligne qui défile : sinon les puces s'empilent et
+					 repoussent les résultats hors de l'écran. -->
+				<div class={SUGGESTION_ROW}>
 					{#each companies as company (company.id)}
 						<a
 							href="/societes/{company.id}"
-							class="flex items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
+							class="flex shrink-0 items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
 						>
 							<span class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white">
 								{#if company.logoPath}
@@ -186,7 +192,7 @@
 									<span class="text-xs">🏢</span>
 								{/if}
 							</span>
-							{company.name}
+							<span class="max-w-[11rem] truncate">{company.name}</span>
 						</a>
 					{/each}
 				</div>
@@ -195,16 +201,16 @@
 		{#if people.length}
 			<div>
 				<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Producteurs & personnes</h2>
-				<div class="flex flex-wrap gap-2">
+				<div class={SUGGESTION_ROW}>
 					{#each people as person (person.id)}
 						<a
 							href="/personnes/{person.id}"
-							class="flex items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
+							class="flex shrink-0 items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-sm font-medium text-ink ring-1 ring-line transition-colors hover:bg-card-hover hover:text-brand hover:ring-brand"
 						>
 							<span class="h-7 w-7 shrink-0 overflow-hidden rounded-full">
 								<Poster path={person.profilePath} alt="" size="w185" fallback="🎭" />
 							</span>
-							<span class="leading-tight">
+							<span class="leading-tight whitespace-nowrap">
 								{person.name}
 								{#if person.knownFor}<span class="text-xs font-normal text-mut"> · {DEPARTMENT_FR[person.knownFor] ?? person.knownFor}</span>{/if}
 							</span>
