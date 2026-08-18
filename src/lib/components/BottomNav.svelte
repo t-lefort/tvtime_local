@@ -6,14 +6,9 @@
 	const allItems = [
 		{ href: '/', label: 'Fil', d: 'M4 6h16M4 12h16M4 18h9' },
 		{
-			href: '/series',
-			label: 'Séries',
-			d: 'M3.5 3.5h7v7h-7zM13.5 3.5h7v7h-7zM3.5 13.5h7v7h-7zM13.5 13.5h7v7h-7z'
-		},
-		{
-			href: '/films',
-			label: 'Films',
-			d: 'M3.5 4.5h17v15h-17zM7.5 4.5v15M16.5 4.5v15M3.5 9.5h4M3.5 14.5h4M16.5 9.5h4M16.5 14.5h4'
+			href: '/bibliotheque',
+			label: 'Bibliothèque',
+			d: 'M4 5.5h5v14H4zM10.5 5.5h5v14h-5zM17 4l3 1-3 14-3-1z'
 		},
 		{
 			href: '/suggestions',
@@ -37,6 +32,9 @@
 	);
 
 	function isActive(href: string): boolean {
+		if (href === '/bibliotheque') {
+			return ['/bibliotheque', '/series', '/films', '/livres'].some((prefix) => page.url.pathname.startsWith(prefix));
+		}
 		return href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
 	}
 </script>

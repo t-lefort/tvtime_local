@@ -184,6 +184,108 @@ export const movieWatches = sqliteTable(
 	]
 );
 
+// Catalogue bibliographique partage. Une serie regroupe des oeuvres/tomes ;
+// un livre represente une edition physique ou numerique identifiee par son ISBN.
+export const bookSeries = sqliteTable('book_series', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	title: text('title').notNull(),
+	type: text('type'),
+	collection: text('collection'),
+	category: text('category'),
+	externalSource: text('external_source'),
+	externalId: text('external_id'),
+	lastSyncedAt: text('last_synced_at')
+});
+
+export const books = sqliteTable(
+	'books',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		seriesId: integer('series_id').references(() => bookSeries.id, { onDelete: 'set null' }),
+		isbn13: text('isbn13'),
+		isbn10: text('isbn10'),
+		externalSource: text('external_source'),
+		externalId: text('external_id'),
+		title: text('title').notNull(),
+		subtitle: text('subtitle'),
+		authors: text('authors').notNull().default('[]'),
+		description: text('description'),
+		publisher: text('publisher'),
+		publishDate: text('publish_date'),
+		language: text('language'),
+		pageCount: integer('page_count'),
+		coverUrl: text('cover_url'),
+		volume: text('volume'),
+		numbering: text('numbering'),
+		price: real('price'),
+		lastSyncedAt: text('last_synced_at')
+	},
+	(t) => [
+		uniqueIndex('books_isbn13').on(t.isbn13),
+		index('books_series').on(t.seriesId),
+		index('books_external').on(t.externalSource, t.externalId)
+	]
+);
+
+// Etat d'une edition dans la bibliotheque d'un profil. Les attributs avances
+// correspondent aux colonnes exportees par Bubble et restent independants du catalogue.
+export const userBooks = sqliteTable(
+	'user_books',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		bookId: integer('book_id')
+			.notNull()
+			.references(() => books.id, { onDelete: 'cascade' }),
+		addedAt: text('added_at')
+			.notNull()
+			.default(sql`(datetime('now'))`),
+		inCollection: integer('in_collection', { mode: 'boolean' }).notNull().default(true),
+		wishlist: integer('wishlist', { mode: 'boolean' }).notNull().default(false),
+		readingStatus: text('reading_status').notNull().default('unread'),
+		favorite: integer('favorite', { mode: 'boolean' }).notNull().default(false),
+		rating: integer('rating'),
+		review: text('review'),
+		signed: integer('signed', { mode: 'boolean' }).notNull().default(false),
+		originalEdition: integer('original_edition', { mode: 'boolean' }).notNull().default(false),
+		loanedTo: text('loaned_to'),
+		deluxe: integer('deluxe', { mode: 'boolean' }).notNull().default(false),
+		limitedSeries: integer('limited_series', { mode: 'boolean' }).notNull().default(false),
+		digital: integer('digital', { mode: 'boolean' }).notNull().default(false),
+		forSale: integer('for_sale', { mode: 'boolean' }).notNull().default(false),
+		purchasePrice: real('purchase_price'),
+		estimatedValue: real('estimated_value'),
+		condition: text('condition')
+	},
+	(t) => [
+		uniqueIndex('user_books_user_book').on(t.userId, t.bookId),
+		index('user_books_user').on(t.userId),
+		index('user_books_book').on(t.bookId)
+	]
+);
+
+export const userBookSeries = sqliteTable(
+	'user_book_series',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		seriesId: integer('series_id')
+			.notNull()
+			.references(() => bookSeries.id, { onDelete: 'cascade' }),
+		followed: integer('followed', { mode: 'boolean' }).notNull().default(true),
+		rating: integer('rating'),
+		review: text('review')
+	},
+	(t) => [
+		uniqueIndex('user_book_series_user_series').on(t.userId, t.seriesId),
+		index('user_book_series_series').on(t.seriesId)
+	]
+);
+
 export type User = typeof users.$inferSelect;
 export type Show = typeof shows.$inferSelect;
 export type UserShow = typeof userShows.$inferSelect;
@@ -192,3 +294,7 @@ export type Watch = typeof watches.$inferSelect;
 export type Movie = typeof movies.$inferSelect;
 export type UserMovie = typeof userMovies.$inferSelect;
 export type MovieWatch = typeof movieWatches.$inferSelect;
+export type BookSeries = typeof bookSeries.$inferSelect;
+export type Book = typeof books.$inferSelect;
+export type UserBook = typeof userBooks.$inferSelect;
+export type UserBookSeries = typeof userBookSeries.$inferSelect;

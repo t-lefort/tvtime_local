@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fail, redirect } from '@sveltejs/kit';
 import Database from 'better-sqlite3';
 import { db } from '$lib/server/db';
+import { getBubbleImportJob, startBubbleImportJob } from '$lib/server/bubble-import';
+import { getBooksForUser } from '$lib/server/books';
 import { getProfileStats } from '$lib/server/queries';
 import {
 	csvFilesFromUpload,
@@ -30,6 +32,7 @@ export const load: PageServerLoad = ({ locals }) => {
 	const user = requireUser(locals);
 	const account = getUserById(user.id);
 	const stats = getProfileStats(user.id);
+	const profileBooks = getBooksForUser(user.id);
 
 	// 24 derniers mois, mois vides inclus
 	const byMonth = new Map(stats.perMonth.map((m) => [m.month, m.count]));
@@ -56,6 +59,8 @@ export const load: PageServerLoad = ({ locals }) => {
 		distinctMovies: stats.distinctMovies,
 		totalMovieWatches: stats.totalMovieWatches,
 		totalMovies: stats.totalMovies,
+		totalBooks: profileBooks.length,
+		readBooks: profileBooks.filter((book) => book.readingStatus === 'read').length,
 		countsByState: stats.countsByState,
 		totalShows: stats.totalShows,
 		months,
@@ -71,7 +76,8 @@ export const load: PageServerLoad = ({ locals }) => {
 				watchedCount: s.watchedCount,
 				state: s.state
 			})),
-		tvtimeJob: getTvTimeImportJob()
+		tvtimeJob: getTvTimeImportJob(),
+		bubbleJob: getBubbleImportJob(user.id)
 	};
 };
 
@@ -183,6 +189,21 @@ export const actions: Actions = {
 		return { tvtimeStarted: true };
 	},
 
+	/** Importe l'export CSV de Bubble dans le profil actif, sans bloquer la requete HTTP. */
+	importBubble: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const file = (await request.formData()).get('bubble');
+		if (!(file instanceof File) || file.size === 0) {
+			return fail(400, { bubbleError: 'Choisissez le fichier CSV exporté depuis Bubble.' });
+		}
+		if (file.size > 20 * 1024 * 1024) {
+			return fail(400, { bubbleError: 'Fichier trop volumineux (20 Mo maximum).' });
+		}
+		const result = startBubbleImportJob(user, await file.text());
+		if ('error' in result) return fail(409, { bubbleError: result.error });
+		return { bubbleStarted: true };
+	},
+
 	/**
 	 * Remplace toutes les données par celles d'une base exportée depuis l'app.
 	 * On copie les tables via ATTACH plutôt que de remplacer le fichier : pas de
@@ -228,8 +249,12 @@ export const actions: Actions = {
 					'shows',
 					'episodes',
 					'movies',
+					'book_series',
+					'books',
 					'user_shows',
 					'user_movies',
+					'user_book_series',
+					'user_books',
 					'watches',
 					'movie_watches'
 				];
@@ -309,7 +334,8 @@ export const actions: Actions = {
 					shows: count('shows'),
 					episodes: count('episodes'),
 					watches: count('watches'),
-					movies: count('movies')
+					movies: count('movies'),
+					books: count('books')
 				}
 			};
 		} finally {

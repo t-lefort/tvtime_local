@@ -1,0 +1,351 @@
+import 'dotenv/config';
+import { XMLParser } from 'fast-xml-parser';
+import { isbn13To10, normalizeIsbn } from '$lib/isbn';
+
+const INVENTAIRE = 'https://inventaire.io/api';
+const BNF = 'https://catalogue.bnf.fr/api/SRU';
+const OPEN_LIBRARY = 'https://openlibrary.org/search.json';
+const GOOGLE_BOOKS = 'https://www.googleapis.com/books/v1/volumes';
+const USER_AGENT = 'TV-Time-local/1.0 (book metadata lookup)';
+
+export interface BookMetadata {
+	isbn13: string | null;
+	isbn10: string | null;
+	title: string;
+	subtitle: string | null;
+	authors: string[];
+	description: string | null;
+	publisher: string | null;
+	publishDate: string | null;
+	language: string | null;
+	pageCount: number | null;
+	coverUrl: string | null;
+	seriesTitle: string | null;
+	volume: string | null;
+	source: 'inventaire' | 'bnf' | 'openlibrary' | 'google-books' | 'manual';
+	sourceId: string | null;
+}
+
+export interface BookSearchResult {
+	sourceId: string;
+	title: string;
+	description: string | null;
+	coverUrl: string | null;
+}
+
+type Entity = {
+	uri: string;
+	type: string;
+	labels?: Record<string, string> & { fromclaims?: string };
+	descriptions?: Record<string, string>;
+	claims?: Record<string, unknown[]>;
+	originalLang?: string;
+	image?: { url?: string };
+};
+
+async function getJson<T>(url: URL): Promise<T> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 10_000);
+	try {
+		const response = await fetch(url, {
+			headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+			signal: controller.signal
+		});
+		if (!response.ok) throw new Error(`${url.hostname}: HTTP ${response.status}`);
+		return (await response.json()) as T;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+function claim(entity: Entity | undefined, property: string): unknown[] {
+	return entity?.claims?.[property] ?? [];
+}
+
+function firstString(entity: Entity | undefined, property: string): string | null {
+	const value = claim(entity, property)[0];
+	return typeof value === 'string' ? value : null;
+}
+
+function label(entity: Entity | undefined): string | null {
+	if (!entity?.labels) return null;
+	return (
+		entity.labels.fr ??
+		(entity.originalLang ? entity.labels[entity.originalLang] : undefined) ??
+		entity.labels.en ??
+		entity.labels.fromclaims ??
+		Object.values(entity.labels)[0] ??
+		null
+	);
+}
+
+async function inventaireEntities(uris: string[]): Promise<Record<string, Entity>> {
+	if (!uris.length) return {};
+	const url = new URL(`${INVENTAIRE}/entities/by-uris`);
+	url.searchParams.set('uris', uris.join('|'));
+	url.searchParams.set('lang', 'fr');
+	const response = await getJson<{ entities: Record<string, Entity>; redirects?: Record<string, string> }>(url);
+	return response.entities ?? {};
+}
+
+function inventaireImage(path: string | undefined): string | null {
+	if (!path) return null;
+	return path.startsWith('http') ? path : `https://inventaire.io${path}`;
+}
+
+async function inventaireByIsbn(isbn13: string): Promise<BookMetadata | null> {
+	const url = new URL(`${INVENTAIRE}/entities/by-uris`);
+	url.searchParams.set('uris', `isbn:${isbn13}`);
+	url.searchParams.set('lang', 'fr');
+	const response = await getJson<{
+		entities: Record<string, Entity>;
+		redirects?: Record<string, string>;
+		notFound?: string[];
+	}>(url);
+	const editionUri = response.redirects?.[`isbn:${isbn13}`];
+	const edition = editionUri ? response.entities[editionUri] : Object.values(response.entities)[0];
+	if (!edition) return null;
+	return inventaireEditionToMetadata(edition);
+}
+
+async function inventaireEditionToMetadata(edition: Entity): Promise<BookMetadata> {
+	const workUri = firstString(edition, 'wdt:P629');
+	const publisherUri = firstString(edition, 'wdt:P123');
+	const firstEntities = await inventaireEntities([workUri, publisherUri].filter((v): v is string => Boolean(v)));
+	const work = workUri ? firstEntities[workUri] : undefined;
+	const seriesUri = firstString(work, 'wdt:P179');
+	const contributorUris = [
+		...claim(work, 'wdt:P50'),
+		...claim(work, 'wdt:P58'),
+		...claim(work, 'wdt:P110'),
+		...claim(work, 'wdt:P655')
+	].filter((v): v is string => typeof v === 'string');
+	const related = await inventaireEntities([seriesUri, ...contributorUris].filter((v): v is string => Boolean(v)));
+	let volume: string | null = null;
+	if (seriesUri && workUri) {
+		try {
+			const url = new URL(`${INVENTAIRE}/entities/serie-parts`);
+			url.searchParams.set('uri', seriesUri);
+			const parts = await getJson<{ parts: { uri: string; ordinal?: string }[] }>(url);
+			volume = parts.parts.find((part) => part.uri === workUri)?.ordinal ?? null;
+		} catch {
+			// La serie reste exploitable meme si son ordre est incomplet.
+		}
+	}
+	const title = firstString(edition, 'wdt:P1476') ?? label(edition) ?? label(work) ?? 'Livre sans titre';
+	if (!volume) volume = /(?:tome|vol(?:ume)?\.?)[\s:.-]*(\d+(?:\.\d+)?)/i.exec(title)?.[1] ?? null;
+	const isbn13 = normalizeIsbn(firstString(edition, 'wdt:P212') ?? '') ?? null;
+	const isbn10 = firstString(edition, 'wdt:P957')?.replace(/-/g, '') ?? (isbn13 ? isbn13To10(isbn13) : null);
+	const pageValue = claim(edition, 'wdt:P1104')[0];
+	return {
+		isbn13,
+		isbn10,
+		title,
+		subtitle: null,
+		authors: [...new Set(contributorUris.map((uri) => label(related[uri])).filter((v): v is string => Boolean(v)))],
+		description: work?.descriptions?.fr ?? work?.descriptions?.en ?? null,
+		publisher: publisherUri ? label(firstEntities[publisherUri]) : null,
+		publishDate: firstString(edition, 'wdt:P577'),
+		language: edition.originalLang ?? null,
+		pageCount: typeof pageValue === 'number' ? pageValue : Number(pageValue) || null,
+		coverUrl: inventaireImage(edition.image?.url ?? work?.image?.url),
+		seriesTitle: seriesUri ? label(related[seriesUri]) : null,
+		volume,
+		source: 'inventaire',
+		sourceId: edition.uri
+	};
+}
+
+function asArray<T>(value: T | T[] | undefined): T[] {
+	return value === undefined ? [] : Array.isArray(value) ? value : [value];
+}
+
+async function bnfByIsbn(isbn13: string): Promise<BookMetadata | null> {
+	const isbn10 = isbn13To10(isbn13);
+	const terms = [isbn13, isbn10].filter(Boolean).join(' ');
+	const url = new URL(BNF);
+	url.searchParams.set('version', '1.2');
+	url.searchParams.set('operation', 'searchRetrieve');
+	url.searchParams.set('query', `bib.isbn any "${terms}"`);
+	url.searchParams.set('recordSchema', 'dublincore');
+	url.searchParams.set('maximumRecords', '5');
+	const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+	if (!response.ok) throw new Error(`catalogue.bnf.fr: HTTP ${response.status}`);
+	const parsed = new XMLParser({ removeNSPrefix: true }).parse(await response.text()) as Record<string, any>;
+	const records = asArray(parsed.searchRetrieveResponse?.records?.record);
+	if (!records.length) return null;
+	const dc = records[0]?.recordData?.dc;
+	if (!dc) return null;
+	const identifiers = asArray(dc.identifier).map(String);
+	const ark = identifiers.find((value) => value.includes('ark:/')) ?? null;
+	const rawTitle = String(asArray(dc.title)[0] ?? 'Livre sans titre');
+	return {
+		isbn13,
+		isbn10,
+		title: rawTitle.split(' / ')[0].trim(),
+		subtitle: null,
+		authors: asArray(dc.creator).map(String),
+		description: null,
+		publisher: asArray(dc.publisher).map(String)[0] ?? null,
+		publishDate: asArray(dc.date).map(String)[0] ?? null,
+		language: asArray(dc.language).map(String)[0] ?? 'fr',
+		pageCount: null,
+		coverUrl: null,
+		seriesTitle: null,
+		volume: /(?:^|[.\s])([0-9]+)\s*(?:\/|$)/.exec(rawTitle)?.[1] ?? null,
+		source: 'bnf',
+		sourceId: ark
+	};
+}
+
+async function openLibraryByIsbn(isbn13: string): Promise<BookMetadata | null> {
+	const url = new URL(OPEN_LIBRARY);
+	url.searchParams.set('isbn', isbn13);
+	url.searchParams.set('fields', 'key,title,author_name,publisher,publish_date,cover_i,edition_key,language,number_of_pages_median');
+	url.searchParams.set('limit', '1');
+	const response = await getJson<{ docs?: Record<string, any>[] }>(url);
+	const doc = response.docs?.[0];
+	if (!doc) return null;
+	return {
+		isbn13,
+		isbn10: isbn13To10(isbn13),
+		title: doc.title ?? 'Livre sans titre',
+		subtitle: null,
+		authors: doc.author_name ?? [],
+		description: null,
+		publisher: doc.publisher?.[0] ?? null,
+		publishDate: doc.publish_date?.[0] ?? null,
+		language: doc.language?.[0] ?? null,
+		pageCount: doc.number_of_pages_median ?? null,
+		coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+		seriesTitle: null,
+		volume: null,
+		source: 'openlibrary',
+		sourceId: doc.edition_key?.[0] ?? doc.key ?? null
+	};
+}
+
+async function googleByIsbn(isbn13: string): Promise<BookMetadata | null> {
+	const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
+	if (!key) return null;
+	const url = new URL(GOOGLE_BOOKS);
+	url.searchParams.set('q', `isbn:${isbn13}`);
+	url.searchParams.set('langRestrict', 'fr');
+	url.searchParams.set('maxResults', '5');
+	url.searchParams.set('key', key);
+	const response = await getJson<{
+		items?: {
+			id: string;
+			volumeInfo: Record<string, any> & {
+				industryIdentifiers?: { type?: string; identifier?: string }[];
+			};
+		}[];
+	}>(url);
+	// Google peut occasionnellement renvoyer un volume sans rapport avec l'ISBN demandé.
+	// Ne jamais accepter le premier résultat sans vérifier ses identifiants bibliographiques.
+	const item = response.items?.find((candidate) =>
+		candidate.volumeInfo.industryIdentifiers?.some(
+			(identifier) => normalizeIsbn(identifier.identifier ?? '') === isbn13
+		)
+	);
+	if (!item) return null;
+	const info = item.volumeInfo;
+	return {
+		isbn13,
+		isbn10: isbn13To10(isbn13),
+		title: info.title ?? 'Livre sans titre',
+		subtitle: info.subtitle ?? null,
+		authors: info.authors ?? [],
+		description: info.description ?? null,
+		publisher: info.publisher ?? null,
+		publishDate: info.publishedDate ?? null,
+		language: info.language ?? null,
+		pageCount: info.pageCount ?? null,
+		coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/, 'https:') ?? null,
+		seriesTitle: null,
+		volume: null,
+		source: 'google-books',
+		sourceId: item.id
+	};
+}
+
+function mergeMetadata(primary: BookMetadata, extra: BookMetadata): BookMetadata {
+	return {
+		...primary,
+		isbn13: primary.isbn13 ?? extra.isbn13,
+		isbn10: primary.isbn10 ?? extra.isbn10,
+		subtitle: primary.subtitle ?? extra.subtitle,
+		authors: primary.authors.length ? primary.authors : extra.authors,
+		description: primary.description ?? extra.description,
+		publisher: primary.publisher ?? extra.publisher,
+		publishDate: primary.publishDate ?? extra.publishDate,
+		language: primary.language ?? extra.language,
+		pageCount: primary.pageCount ?? extra.pageCount,
+		coverUrl: primary.coverUrl ?? extra.coverUrl,
+		seriesTitle: primary.seriesTitle ?? extra.seriesTitle,
+		volume: primary.volume ?? extra.volume
+	};
+}
+
+/** Recherche une edition et fusionne les sources sans laisser une panne bloquer l'ajout. */
+export async function getBookByIsbn(rawIsbn: string): Promise<BookMetadata | null> {
+	const isbn13 = normalizeIsbn(rawIsbn);
+	if (!isbn13) return null;
+	const lookups = [inventaireByIsbn, bnfByIsbn, openLibraryByIsbn, googleByIsbn];
+	let result: BookMetadata | null = null;
+	for (const lookup of lookups) {
+		try {
+			const found = await lookup(isbn13);
+			if (found) result = result ? mergeMetadata(result, found) : found;
+			if (
+				result?.source === 'inventaire' &&
+				result.authors.length &&
+				result.publisher &&
+				result.publishDate &&
+				result.coverUrl
+			) return result;
+		} catch {
+			// Une source indisponible ne doit pas masquer les suivantes.
+		}
+	}
+	return result;
+}
+
+export async function searchBooks(query: string): Promise<BookSearchResult[]> {
+	const q = query.trim();
+	if (!q) return [];
+	const isbn = normalizeIsbn(q);
+	if (isbn) {
+		const book = await getBookByIsbn(isbn);
+		return book
+			? [{ sourceId: `isbn:${isbn}`, title: book.title, description: book.description, coverUrl: book.coverUrl }]
+			: [];
+	}
+	const url = new URL(`${INVENTAIRE}/search`);
+	url.searchParams.set('search', q);
+	url.searchParams.set('types', 'works');
+	url.searchParams.set('lang', 'fr');
+	url.searchParams.set('limit', '20');
+	const response = await getJson<{
+		results?: { uri: string; label: string; description?: string; image?: string; type: string }[];
+	}>(url);
+	return (response.results ?? []).map((result) => ({
+		sourceId: result.uri,
+		title: result.label,
+		description: result.description ?? null,
+		coverUrl: inventaireImage(result.image)
+	}));
+}
+
+/** Choisit une edition d'une oeuvre trouvee par la recherche plein texte. */
+export async function getBookByInventaireWork(workUri: string): Promise<BookMetadata | null> {
+	if (!/^(?:inv|wd):[A-Za-z0-9]+$/.test(workUri)) return null;
+	const url = new URL(`${INVENTAIRE}/entities/reverse-claims`);
+	url.searchParams.set('property', 'wdt:P629');
+	url.searchParams.set('value', workUri);
+	const { uris } = await getJson<{ uris?: string[] }>(url);
+	const editions = await inventaireEntities((uris ?? []).slice(0, 20));
+	const candidates = Object.values(editions).filter((entity) => normalizeIsbn(firstString(entity, 'wdt:P212') ?? ''));
+	const edition = candidates.find((entity) => entity.originalLang === 'fr') ?? candidates[0];
+	return edition ? inventaireEditionToMetadata(edition) : null;
+}
