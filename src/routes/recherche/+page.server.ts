@@ -2,23 +2,19 @@ import { redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
-import { searchCompanies, searchMovie, searchPeople, searchTv } from '$lib/server/tmdb';
+import {
+	searchCompanies,
+	searchMovie,
+	searchPeople,
+	searchTv,
+	type TmdbMovieSummary,
+	type TmdbShowSummary
+} from '$lib/server/tmdb';
 import { addOrUpdateShow, followShow } from '$lib/server/shows';
 import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
 import { requireUser } from '$lib/server/users';
+import { interleaveResults, parseSearchType, type SearchResult } from '$lib/search';
 import type { Actions, PageServerLoad } from './$types';
-
-export interface SearchResult {
-	tmdbId: number;
-	name: string;
-	originalName: string;
-	overview: string;
-	posterPath: string | null;
-	backdropPath: string | null;
-	date: string | null;
-	voteAverage: number;
-	localId: number | null;
-}
 
 /** Suggestion de société de production correspondant à la requête (recherche de films). */
 export interface CompanySuggestion {
@@ -40,73 +36,99 @@ const emptySuggestions = {
 	people: [] as PersonSuggestion[]
 };
 
+function toMovieResult(r: TmdbMovieSummary, localId: number | null): SearchResult {
+	return {
+		kind: 'films',
+		tmdbId: r.id,
+		name: r.title,
+		originalName: r.original_title,
+		overview: r.overview,
+		posterPath: r.poster_path,
+		backdropPath: r.backdrop_path,
+		date: r.release_date,
+		voteAverage: r.vote_average,
+		popularity: r.popularity ?? 0,
+		localId
+	};
+}
+
+function toShowResult(r: TmdbShowSummary, localId: number | null): SearchResult {
+	return {
+		kind: 'series',
+		tmdbId: r.id,
+		name: r.name,
+		originalName: r.original_name,
+		overview: r.overview,
+		posterPath: r.poster_path,
+		backdropPath: r.backdrop_path,
+		date: r.first_air_date,
+		voteAverage: r.vote_average,
+		popularity: r.popularity ?? 0,
+		localId
+	};
+}
+
+/** Films de la bibliothèque du profil, indexés par id TMDB. */
+function collectedMovieIds(userId: number): Map<number, number> {
+	return new Map(
+		db
+			.select({ tmdbId: movies.tmdbId, id: movies.id })
+			.from(movies)
+			.innerJoin(userMovies, eq(userMovies.movieId, movies.id))
+			.where(eq(userMovies.userId, userId))
+			.all()
+			.map((r) => [r.tmdbId, r.id])
+	);
+}
+
+/** Séries suivies par le profil, indexées par id TMDB. */
+function followedShowIds(userId: number): Map<number, number> {
+	return new Map(
+		db
+			.select({ tmdbId: shows.tmdbId, id: shows.id })
+			.from(shows)
+			.innerJoin(userShows, eq(userShows.showId, shows.id))
+			.where(eq(userShows.userId, userId))
+			.all()
+			.map((r) => [r.tmdbId, r.id])
+	);
+}
+
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const user = requireUser(locals);
 	const q = url.searchParams.get('q')?.trim() ?? '';
-	const type = url.searchParams.get('type') === 'films' ? 'films' : 'series';
+	const type = parseSearchType(url.searchParams.get('type'));
 	if (!q) return { q, type, results: [] as SearchResult[], error: null, ...emptySuggestions };
 
 	try {
-		let results: SearchResult[];
-		let suggestions = emptySuggestions;
-		if (type === 'films') {
-			const [found, companies, people] = await Promise.all([
-				searchMovie(q),
-				searchCompanies(q),
-				searchPeople(q)
-			]);
-			suggestions = {
-				companies: companies.map((c) => ({ id: c.id, name: c.name, logoPath: c.logo_path })),
-				people: people.map((p) => ({
-					id: p.id,
-					name: p.name,
-					knownFor: p.known_for_department || null,
-					profilePath: p.profile_path
-				}))
-			};
-			const inDb = new Map(
-				db
-					.select({ tmdbId: movies.tmdbId, id: movies.id })
-					.from(movies)
-					.innerJoin(userMovies, eq(userMovies.movieId, movies.id))
-					.where(eq(userMovies.userId, user.id))
-					.all()
-					.map((r) => [r.tmdbId, r.id])
-			);
-			results = found.map((r) => ({
-				tmdbId: r.id,
-				name: r.title,
-				originalName: r.original_title,
-				overview: r.overview,
-				posterPath: r.poster_path,
-				backdropPath: r.backdrop_path,
-				date: r.release_date,
-				voteAverage: r.vote_average,
-				localId: inDb.get(r.id) ?? null
-			}));
-		} else {
-			const found = await searchTv(q);
-			const inDb = new Map(
-				db
-					.select({ tmdbId: shows.tmdbId, id: shows.id })
-					.from(shows)
-					.innerJoin(userShows, eq(userShows.showId, shows.id))
-					.where(eq(userShows.userId, user.id))
-					.all()
-					.map((r) => [r.tmdbId, r.id])
-			);
-			results = found.map((r) => ({
-				tmdbId: r.id,
-				name: r.name,
-				originalName: r.original_name,
-				overview: r.overview,
-				posterPath: r.poster_path,
-				backdropPath: r.backdrop_path,
-				date: r.first_air_date,
-				voteAverage: r.vote_average,
-				localId: inDb.get(r.id) ?? null
-			}));
-		}
+		// Les sociétés et personnes n'ont d'intérêt que là où des films sont proposés.
+		const withSuggestions = type !== 'series';
+		const [foundShows, foundMovies, companies, people] = await Promise.all([
+			type === 'films' ? [] : searchTv(q),
+			type === 'series' ? [] : searchMovie(q),
+			withSuggestions ? searchCompanies(q) : [],
+			withSuggestions ? searchPeople(q) : []
+		]);
+
+		const suggestions = {
+			companies: companies.map((c) => ({ id: c.id, name: c.name, logoPath: c.logo_path })),
+			people: people.map((p) => ({
+				id: p.id,
+				name: p.name,
+				knownFor: p.known_for_department || null,
+				profilePath: p.profile_path
+			}))
+		};
+
+		const collected = foundMovies.length ? collectedMovieIds(user.id) : new Map<number, number>();
+		const followed = foundShows.length ? followedShowIds(user.id) : new Map<number, number>();
+		const showResults = foundShows.map((r) => toShowResult(r, followed.get(r.id) ?? null));
+		const movieResults = foundMovies.map((r) => toMovieResult(r, collected.get(r.id) ?? null));
+		const results =
+			type === 'tout'
+				? interleaveResults(showResults, movieResults)
+				: [...showResults, ...movieResults];
+
 		return { q, type, results, error: null, ...suggestions };
 	} catch (e) {
 		return {
