@@ -54,6 +54,29 @@
 					tvtimeReport.unmatchedMovieWatches.length
 			: 0
 	);
+
+	// ---- Import de l'export CSV Bubble ----
+	let bubbleFiles = $state<FileList | null>(null);
+	let bubbleStarting = $state(false);
+	// svelte-ignore state_referenced_locally -- valeur initiale seulement, mise à jour ensuite par le sondage
+	let bubbleJob = $state(data.bubbleJob);
+	async function refreshBubbleJob() {
+		try {
+			const res = await fetch('/profil/import-bubble');
+			if (res.ok) bubbleJob = await res.json();
+		} catch {
+			// erreur réseau passagère
+		}
+	}
+	$effect(() => {
+		if (!bubbleJob?.running) return;
+		const timer = setInterval(async () => {
+			await refreshBubbleJob();
+			if (!bubbleJob?.running) await invalidateAll();
+		}, 2000);
+		return () => clearInterval(timer);
+	});
+	const bubbleReport = $derived(bubbleJob && !bubbleJob.running ? bubbleJob.report : undefined);
 	let avatarFile = $state<FileList | null>(null);
 	// Force le rechargement de l'image après un envoi (l'URL ne change pas sinon)
 	let avatarBump = $state(0);
@@ -137,7 +160,9 @@
 		{data.distinctEpisodes.toLocaleString('fr-FR')} épisodes ·
 		{data.totalShows} séries{#if data.distinctMovies > 0}
 			· {data.distinctMovies.toLocaleString('fr-FR')} film{data.distinctMovies > 1 ? 's' : ''}{/if}{#if rewatches > 0}
-			· {rewatches.toLocaleString('fr-FR')} revisionnages{/if}
+			· {rewatches.toLocaleString('fr-FR')} revisionnages{/if}{#if data.totalBooks > 0}
+			· {data.totalBooks.toLocaleString('fr-FR')} livre{data.totalBooks > 1 ? 's' : ''}
+			({data.readBooks.toLocaleString('fr-FR')} lu{data.readBooks > 1 ? 's' : ''}){/if}
 	</p>
 </section>
 
@@ -365,7 +390,7 @@
 			>
 				⬇ Exporter la base
 			</a>
-			<span class="text-xs text-mut">Télécharge un fichier .db avec tout (séries, historique, statuts).</span>
+			<span class="text-xs text-mut">Télécharge un fichier .db avec tout (séries, films, livres, historiques et statuts).</span>
 		</div>
 		<form
 			method="POST"
@@ -398,9 +423,67 @@
 			<p class="text-sm text-red-400">{form.error}</p>
 		{:else if form?.imported}
 			<p class="text-sm text-ok">
-				✓ Import réussi : {form.imported.shows} séries, {form.imported.movies} film{form.imported.movies > 1 ? 's' : ''},
+				✓ Import réussi : {form.imported.shows} séries, {form.imported.movies} film{form.imported.movies > 1 ? 's' : ''}, {form.imported.books} livre{form.imported.books > 1 ? 's' : ''},
 				{form.imported.watches.toLocaleString('fr-FR')} visionnages.
 			</p>
+		{/if}
+	</div>
+</section>
+
+<section class="mt-6">
+	<h2 class="mb-3 text-sm font-semibold tracking-wide text-mut uppercase">Import Bubble</h2>
+	<div class="space-y-3 rounded-2xl bg-card p-4">
+		<p class="text-xs text-mut">
+			Importe l'export CSV Bubble dans le profil « {data.profileName} » : collection, albums lus,
+			éditions, prêts, notes et avis. L'import est relançable sans créer de doublons.
+		</p>
+		<form
+			method="POST"
+			action="?/importBubble"
+			enctype="multipart/form-data"
+			use:enhance={() => {
+				bubbleStarting = true;
+				return async ({ update }) => {
+					await update();
+					bubbleStarting = false;
+					await refreshBubbleJob();
+				};
+			}}
+			class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+		>
+			<input
+				type="file"
+				name="bubble"
+				accept=".csv,text/csv"
+				bind:files={bubbleFiles}
+				class="min-w-0 max-w-full text-sm text-mut file:mr-3 file:rounded-full file:border file:border-line file:bg-transparent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+			/>
+			<button
+				disabled={!bubbleFiles?.length || bubbleStarting || bubbleJob?.running}
+				class="w-full shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink disabled:opacity-40 sm:w-auto"
+			>
+				{bubbleJob?.running ? 'Import en cours…' : 'Importer Bubble'}
+			</button>
+		</form>
+		{#if form?.bubbleError}<p class="text-sm text-red-400">{form.bubbleError}</p>{/if}
+		{#if bubbleJob?.running}
+			<div class="space-y-1.5">
+				<div class="flex justify-between gap-3 text-xs text-mut">
+					<span class="truncate">{bubbleJob.progress.label ?? 'Préparation…'}</span>
+					{#if bubbleJob.progress.total}<span>{bubbleJob.progress.current}/{bubbleJob.progress.total}</span>{/if}
+				</div>
+				<div class="h-2 overflow-hidden rounded-full bg-line/60"><div class="h-full rounded-full bg-brand transition-all" style="width: {bubbleJob.progress.total ? (bubbleJob.progress.current / bubbleJob.progress.total) * 100 : 0}%"></div></div>
+			</div>
+		{:else if bubbleJob?.error}
+			<p class="text-sm text-red-400">✗ Import échoué : {bubbleJob.error}</p>
+		{:else if bubbleReport}
+			<p class="text-sm text-ok">✓ Import terminé : {bubbleReport.imported} album{bubbleReport.imported > 1 ? 's' : ''} traité{bubbleReport.imported > 1 ? 's' : ''}.</p>
+			{#if bubbleReport.invalid.length || bubbleReport.metadataMissing.length}
+				<details class="text-xs text-mut"><summary class="cursor-pointer">Éléments à vérifier</summary>
+					{#if bubbleReport.invalid.length}<p class="mt-2">Lignes ignorées : {bubbleReport.invalid.map((item) => `${item.title} (${item.reason})`).join(', ')}</p>{/if}
+					{#if bubbleReport.metadataMissing.length}<p class="mt-2">Sans métadonnées externes, données Bubble conservées : {bubbleReport.metadataMissing.map((item) => item.title).join(', ')}</p>{/if}
+				</details>
+			{/if}
 		{/if}
 	</div>
 </section>

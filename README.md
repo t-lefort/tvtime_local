@@ -1,11 +1,12 @@
 # TV Time local
 
-Self-hosted web app for tracking TV shows **and movies**, designed as a minimalist replacement for TV Time (shut down in July 2026): episodes to watch, release calendar, season details, search, statistics and streaming platforms — without the social features.
+Self-hosted web app for tracking TV shows, movies **and books**. It combines a minimalist TV Time replacement with a personal library that can import a Bubble collection.
 
 - **Feed**: **To watch** tab (the next episode of each show, ready to check off) and **Upcoming** tab (upcoming air dates, grouped by date)
 - **Shows**: your library with progress bars, filters (watching, up to date, stopped, finished, not started) and a sort order (most recent activity or alphabetical)
 - **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion. The cast shows the main billing, with a **full cast** button that loads every credited actor from TMDB (also on movies)
 - **Movies**: collection with filters (to watch, watched, favorites) and the same sort order, mark watched/unwatched, rewatches, favorite
+- **Books**: personal library with owned/wishlist/read filters, ratings, loans and edition details. Add by title, ISBN, manual entry or EAN-13 camera scan; Bubble CSV exports can be imported from the profile page
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **For you**: personalized suggestions of shows and movies, based on your ratings, favorites and watch history — filterable by **streaming platform** (the platforms available in your region, grouped: no "with Ads" or reseller variants). Can be hidden from the profile settings
 - **Search**: add shows and movies via TMDB (French metadata). The default **All** tab searches shows and movies at once; the **Shows** and **Movies** tabs narrow it down
@@ -56,6 +57,7 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 | Variable | Purpose |
 | --- | --- |
 | `TMDB_API_KEY` | TMDB API key (required) |
+| `GOOGLE_BOOKS_API_KEY` | Optional Google Books key used only after Inventaire, BnF and Open Library |
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
 | `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
@@ -80,5 +82,7 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 ## Stack
 
 SvelteKit (Svelte 5) · SQLite (better-sqlite3 + Drizzle) · Tailwind CSS v4 · adapter-node · Docker
+
+Book metadata comes primarily from Inventaire (open CC0 bibliographic data), enriched by the BnF and Open Library. Live camera scanning requires HTTPS, except on localhost.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Episode air times are provided by [TVmaze](https://www.tvmaze.com/).

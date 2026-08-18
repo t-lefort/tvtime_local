@@ -1,7 +1,7 @@
 {
 	"name": "TV Time local",
 	"short_name": "TV Time",
-	"description": "Suivi de séries auto-hébergé",
+	"description": "Suivi auto-hébergé de séries, films et livres",
 	"start_url": "/",
 	"display": "standalone",
 	"background_color": "#0b1220",

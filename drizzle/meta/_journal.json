@@ -71,6 +71,13 @@
       "when": 1784530324545,
       "tag": "0009_hide-suggestions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787042339460,
+      "tag": "0010_cheerful_franklin_storm",
+      "breakpoints": true
     }
   ]
 }
