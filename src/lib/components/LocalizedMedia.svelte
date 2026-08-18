@@ -12,6 +12,9 @@
 		variants,
 		fallback = '📺'
 	}: { variants: Variant[]; fallback?: string } = $props();
+
+	let variantsWithPoster = $derived(variants.filter((variant) => variant.posterPath));
+	let variantsWithoutPoster = $derived(variants.filter((variant) => !variant.posterPath));
 </script>
 
 {#if variants.length}
@@ -34,33 +37,57 @@
 			<span class="text-xs text-mut">{variants.length}</span>
 		</summary>
 		<div class="border-t border-line/70 p-3.5">
-			<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-				{#each variants as variant (variant.languageCode)}
-					<article class="min-w-0 overflow-hidden rounded-lg bg-card-hover">
-						<div class="aspect-[2/3]">
-							<Poster
-								path={variant.posterPath}
-								alt={variant.titles[0] || `Affiche en ${variant.languageName}`}
-								size="w342"
-								{fallback}
-							/>
-						</div>
-						<div class="p-2.5">
-							<p class="text-[11px] font-semibold tracking-wide text-brand uppercase">
-								{variant.languageName}
-							</p>
-							{#if variant.titles.length}
-								<p class="mt-1 text-sm leading-snug font-medium">{variant.titles[0]}</p>
-								{#each variant.titles.slice(1) as title (title)}
-									<p class="mt-0.5 text-xs leading-snug text-mut">{title}</p>
+			{#if variantsWithPoster.length}
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+					{#each variantsWithPoster as variant (variant.languageCode)}
+						<article class="min-w-0 overflow-hidden rounded-lg bg-card-hover">
+							<div class="aspect-[2/3]">
+								<Poster
+									path={variant.posterPath}
+									alt={variant.titles[0] || `Affiche en ${variant.languageName}`}
+									size="w342"
+									{fallback}
+								/>
+							</div>
+							<div class="p-2.5">
+								<p class="text-[11px] font-semibold tracking-wide text-brand uppercase">
+									{variant.languageName}
+								</p>
+								{#if variant.titles.length}
+									<p class="mt-1 text-sm leading-snug font-medium">{variant.titles[0]}</p>
+									{#each variant.titles.slice(1) as title (title)}
+										<p class="mt-0.5 text-xs leading-snug text-mut">{title}</p>
+									{/each}
+								{:else}
+									<p class="mt-1 text-xs text-mut">Affiche disponible</p>
+								{/if}
+							</div>
+						</article>
+					{/each}
+				</div>
+			{/if}
+
+			{#if variantsWithoutPoster.length}
+				<section class:border-t={variantsWithPoster.length} class:mt-4={variantsWithPoster.length} class:pt-4={variantsWithPoster.length} class="border-line/70">
+					<h3 class="text-xs font-semibold tracking-wide text-mut uppercase">
+						Langues sans affiche <span class="font-normal">({variantsWithoutPoster.length})</span>
+					</h3>
+					<div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{#each variantsWithoutPoster as variant (variant.languageCode)}
+							<article class="min-w-0 rounded-lg bg-card-hover px-3 py-2.5">
+								<p class="text-[11px] font-semibold tracking-wide text-brand uppercase">
+									{variant.languageName}
+								</p>
+								{#each variant.titles as title, index (title)}
+									<p class:font-medium={index === 0} class="mt-0.5 text-sm leading-snug" class:text-mut={index > 0}>
+										{title}
+									</p>
 								{/each}
-							{:else}
-								<p class="mt-1 text-xs text-mut">Affiche disponible</p>
-							{/if}
-						</div>
-					</article>
-				{/each}
-			</div>
+							</article>
+						{/each}
+					</div>
+				</section>
+			{/if}
 		</div>
 	</details>
 {/if}

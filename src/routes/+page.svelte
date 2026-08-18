@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Poster from '$lib/components/Poster.svelte';
 	import { dayLabel, daysUntil, formatDateShort, sxe, tmdbImg } from '$lib/format';
 	import type { UpcomingItem } from '$lib/server/queries';
 
@@ -57,7 +56,7 @@
 			{#each data.watchNext as item (item.showId)}
 				<li class="flex items-stretch overflow-hidden rounded-xl bg-card">
 					<a href="/series/{item.showTmdbId}" class="flex min-w-0 flex-1 items-center gap-3 md:gap-5">
-						<div class="h-20 w-32 shrink-0 self-stretch md:h-auto md:min-h-28 md:w-48">
+						<div class="h-20 w-32 shrink-0 md:h-28 md:w-48">
 							{#if item.stillPath}
 								<img
 									src={tmdbImg(item.stillPath, 'w342')}
@@ -65,10 +64,15 @@
 									loading="lazy"
 									class="h-full w-full object-cover"
 								/>
+							{:else if item.backdropPath}
+								<img
+									src={tmdbImg(item.backdropPath, 'w780')}
+									alt=""
+									loading="lazy"
+									class="h-full w-full object-cover object-top"
+								/>
 							{:else}
-								<div class="h-full w-full">
-									<Poster path={item.posterPath} size="w185" />
-								</div>
+								<div class="h-full w-full bg-card-hover"></div>
 							{/if}
 						</div>
 						<div class="min-w-0 flex-1 py-2 md:py-3">
@@ -126,7 +130,11 @@
 						<li>
 							<a href="/series/{ep.showTmdbId}" class="flex items-center gap-3 rounded-xl bg-card p-2 pr-4 transition-colors hover:bg-card-hover md:gap-4 md:p-3 md:pr-5">
 								<div class="h-14 w-10 shrink-0 overflow-hidden rounded-md md:h-16 md:w-11">
-									<Poster path={ep.posterPath} size="w185" />
+									{#if ep.posterPath}
+										<img src={tmdbImg(ep.posterPath, 'w185')} alt="" loading="lazy" class="h-full w-full object-cover" />
+									{:else}
+										<div class="h-full w-full bg-card-hover"></div>
+									{/if}
 								</div>
 								<div class="min-w-0 flex-1">
 									<p class="truncate font-semibold">{ep.showName}</p>

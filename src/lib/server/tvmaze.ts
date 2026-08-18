@@ -10,6 +10,7 @@ interface TvmazeShow {
 export interface TvmazeEpisode {
 	season: number;
 	number: number | null;
+	airdate: string | null;
 	airstamp: string | null;
 }
 
@@ -43,13 +44,14 @@ async function tvmaze<T>(path: string): Promise<T> {
 	}
 }
 
-function episodeKey(season: number, episode: number): string {
-	return `${season}:${episode}`;
+function episodeKey(episode: number, airDate: string): string {
+	return `${episode}:${airDate}`;
 }
 
 /**
  * Convertit les instants de diffusion TVmaze en dates civiles du fuseau cible.
- * Les spéciaux sont exclus car leur numérotation diffère souvent de TMDB.
+ * La saison n'entre volontairement pas dans la clé : TMDB et TVmaze peuvent découper
+ * une même série différemment. La date TMDB et le numéro d'épisode servent d'ancre.
  */
 export function buildEpisodeAirDates(
 	episodes: TvmazeEpisode[],
@@ -57,9 +59,12 @@ export function buildEpisodeAirDates(
 ): Map<string, string> {
 	const dates = new Map<string, string>();
 	for (const episode of episodes) {
-		if (episode.season <= 0 || !episode.number || !episode.airstamp) continue;
+		if (episode.season <= 0 || !episode.number || !episode.airdate || !episode.airstamp) continue;
 		try {
-			dates.set(episodeKey(episode.season, episode.number), dateInTimeZone(episode.airstamp, timeZone));
+			dates.set(
+				episodeKey(episode.number, episode.airdate),
+				dateInTimeZone(episode.airstamp, timeZone)
+			);
 		} catch {
 			// Horodatage incomplet côté TVmaze : TMDB restera la source de repli.
 		}
@@ -67,7 +72,7 @@ export function buildEpisodeAirDates(
 	return dates;
 }
 
-/** Dates de disponibilité locales d'une série, indexées par « saison:épisode ». */
+/** Dates de disponibilité locales d'une série, indexées par « épisode:date TMDB ». */
 export async function getLocalizedEpisodeAirDates(
 	tvdbId: number,
 	timeZone = appTimeZone()
@@ -85,8 +90,8 @@ export async function getLocalizedEpisodeAirDates(
 
 export function localizedEpisodeAirDate(
 	dates: Map<string, string>,
-	season: number,
-	episode: number
+	episode: number,
+	airDate: string | null
 ): string | undefined {
-	return dates.get(episodeKey(season, episode));
+	return airDate ? dates.get(episodeKey(episode, airDate)) : undefined;
 }

@@ -37,8 +37,8 @@ for (const entry of legacyEntries) {
 	legacy.pragma('journal_mode = WAL');
 	migrate(drizzle(legacy), { migrationsFolder: legacyDir });
 	legacy.exec(`
-		INSERT INTO shows (id, tmdb_id, name, genres, followed_at, archived, favorite)
-			VALUES (1, 100, 'Ma Série', '["Drame"]', '2024-01-05 10:00:00', 0, 1);
+		INSERT INTO shows (id, tmdb_id, name, genres, backdrop_path, followed_at, archived, favorite)
+			VALUES (1, 100, 'Ma Série', '["Drame"]', '/serie-horizontal.jpg', '2024-01-05 10:00:00', 0, 1);
 		INSERT INTO episodes (id, show_id, tmdb_id, season_number, episode_number, air_date, runtime)
 			VALUES (1, 1, 1000, 1, 1, '2024-01-01', 40), (2, 1, 1001, 1, 2, '2024-01-08', 40);
 		INSERT INTO watches (episode_id, watched_at) VALUES (1, '2024-06-01 20:00:00');
@@ -118,6 +118,7 @@ test('chaque profil a sa bibliothèque et son historique', () => {
 		.prepare('INSERT INTO watches (user_id, episode_id, watched_at) VALUES (?, 2, ?)')
 		.run(bob.id, '2024-06-03 20:00:00');
 	assert.equal(getWatchNext(bob.id)[0].episodeNumber, 1);
+	assert.equal(getWatchNext(bob.id)[0].backdropPath, '/serie-horizontal.jpg');
 	assert.equal(getWatchNext(defaultId)[0].episodeNumber, 2);
 
 	// Bob arrête la série : plus rien dans son fil, aucun effet sur le profil 1
