@@ -6,6 +6,7 @@ import { appToday } from '$lib/server/dates';
 import { getEpisodesWithWatch, getShowsWithProgress, type EpisodeWithWatch } from '$lib/server/queries';
 import { addOrUpdateShow, followShow, getUserShow, unfollowShow } from '$lib/server/shows';
 import { requireUser } from '$lib/server/users';
+import { searchBackHref } from '$lib/search';
 import {
 	extractCast,
 	extractProviders,
@@ -34,7 +35,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const user = requireUser(locals);
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
-	const backHref = q ? `/recherche?type=series&q=${encodeURIComponent(q)}` : '/series';
+	const backHref = searchBackHref(q, url.searchParams.get('type'), '/series');
 	const today = appToday();
 	const localizedMedia = getShowLocalizedMedia(tmdbId).catch(() => []);
 

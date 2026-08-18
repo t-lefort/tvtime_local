@@ -14,12 +14,28 @@
 	let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 	let navigationCount = 0;
 
-	const isFilms = $derived(data.type === 'films');
 	const preview = $derived(data.results[0] ?? null);
 	const otherResults = $derived(data.results.slice(1));
 	const companies = $derived(data.companies ?? []);
 	const people = $derived(data.people ?? []);
-	const hasSuggestions = $derived(isFilms && (companies.length > 0 || people.length > 0));
+	// Sociétés et personnes ne sont chargées que là où des films sont proposés.
+	const hasSuggestions = $derived(
+		data.type !== 'series' && (companies.length > 0 || people.length > 0)
+	);
+
+	const TABS = [
+		{ key: 'tout', label: 'Tout' },
+		{ key: 'series', label: 'Séries' },
+		{ key: 'films', label: 'Films' }
+	] as const;
+
+	const PLACEHOLDERS: Record<string, string> = {
+		tout: 'Rechercher un film ou une série…',
+		series: 'Rechercher une série…',
+		films: 'Rechercher un film…'
+	};
+
+	const isFilm = (result: { kind: 'series' | 'films' }) => result.kind === 'films';
 
 	beforeNavigate(({ type }) => {
 		// A navigation triggered outside the live search (link, form or browser
@@ -70,10 +86,10 @@
 		return `/recherche?${params}`;
 	}
 
-	function resultHref(result: { tmdbId: number }): string {
-		const base = isFilms ? '/films' : '/series';
-		const params = data.q ? `?${new URLSearchParams({ q: data.q })}` : '';
-		return `${base}/${result.tmdbId}${params}`;
+	function resultHref(result: { tmdbId: number; kind: 'series' | 'films' }): string {
+		// `type` accompagne la requête pour que le bouton retour rouvre le bon onglet.
+		const params = data.q ? `?${new URLSearchParams({ q: data.q, type: data.type })}` : '';
+		return `/${result.kind}/${result.tmdbId}${params}`;
 	}
 
 	function ratingLabel(value: number) {
@@ -133,7 +149,7 @@
 	class="sticky top-0 z-20 -mx-4 mb-3 border-b border-line/60 bg-bg/95 px-4 pt-3 pb-3 backdrop-blur md:-mx-6 md:px-6"
 >
 	<div class="mb-3 flex gap-2">
-		{#each [{ key: 'series', label: 'Séries' }, { key: 'films', label: 'Films' }] as t (t.key)}
+		{#each TABS as t (t.key)}
 			<a
 				href={searchUrl(t.key, query)}
 				data-sveltekit-replacestate
@@ -153,7 +169,7 @@
 			name="q"
 			bind:value={query}
 			oninput={(event) => scheduleSearch(event.currentTarget.value)}
-			placeholder={isFilms ? 'Rechercher un film…' : 'Rechercher une série…'}
+			placeholder={PLACEHOLDERS[data.type]}
 			autocomplete="off"
 			autocorrect="off"
 			autocapitalize="off"
@@ -255,7 +271,7 @@
 		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
 			<a href={previewHref} class="w-22 shrink-0 self-start overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
 				<div class="aspect-[2/3]">
-					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilms ? 'film' : 'TV'} />
+					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilm(preview) ? 'film' : 'TV'} />
 				</div>
 			</a>
 			<div class="min-w-0 flex-1 pt-10">
@@ -268,7 +284,7 @@
 					{/if}
 				</div>
 				<p class="mt-1 text-sm text-mut">
-					{isFilms ? 'Film' : 'Série'}
+					{isFilm(preview) ? 'Film' : 'Série'}
 					{#if yearOf(preview.date)} - {yearOf(preview.date)}{/if}
 					{#if ratingLabel(preview.voteAverage)} - TMDB {ratingLabel(preview.voteAverage)}/10{/if}
 				</p>
@@ -288,7 +304,7 @@
 					{:else}
 						<form
 							method="POST"
-							action={isFilms ? '?/addMovie' : '?/add'}
+							action={isFilm(preview) ? '?/addMovie' : '?/add'}
 							use:enhance={() => {
 								adding = preview.tmdbId;
 								return async ({ update }) => {
@@ -302,7 +318,7 @@
 								disabled={adding !== null}
 								class="rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
 							>
-								{adding === preview.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
+								{adding === preview.tmdbId ? 'Ajout…' : isFilm(preview) ? '+ Ajouter' : '+ Suivre'}
 							</button>
 						</form>
 						<a href={previewHref} class="rounded-full border border-line px-3.5 py-1.5 text-sm font-semibold text-mut hover:border-mut hover:text-ink">
@@ -322,13 +338,17 @@
 				{@const href = resultHref(result)}
 				<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
 					<a href={href} class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
-						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilms ? 'film' : 'TV'} />
+						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilm(result) ? 'film' : 'TV'} />
 					</a>
 					<div class="min-w-0 flex-1 py-1">
 						<p class="truncate font-semibold">
 							<a href={href} class="hover:text-brand hover:underline">{result.name}</a>
 							{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
 						</p>
+						{#if data.type === 'tout'}
+							<!-- L'onglet « Tout » mélange les deux catalogues : on nomme la nature du résultat. -->
+							<p class="text-[11px] font-medium text-mut">{isFilm(result) ? 'Film' : 'Série'}</p>
+						{/if}
 						<p class="truncate text-xs text-mut">
 							{#if result.originalName !== result.name}{result.originalName}{/if}
 							{#if ratingLabel(result.voteAverage)}
@@ -346,7 +366,7 @@
 					{:else}
 						<form
 							method="POST"
-							action={isFilms ? '?/addMovie' : '?/add'}
+							action={isFilm(result) ? '?/addMovie' : '?/add'}
 							use:enhance={() => {
 								adding = result.tmdbId;
 								return async ({ update }) => {
@@ -360,7 +380,7 @@
 								disabled={adding !== null}
 								class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
 							>
-								{adding === result.tmdbId ? 'Ajout…' : isFilms ? '+ Ajouter' : '+ Suivre'}
+								{adding === result.tmdbId ? 'Ajout…' : isFilm(result) ? '+ Ajouter' : '+ Suivre'}
 							</button>
 						</form>
 					{/if}
@@ -372,7 +392,8 @@
 	</div>
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
-		Cherchez {isFilms ? 'un film' : 'une série'} pour l'ajouter à votre bibliothèque.
+		Cherchez {data.type === 'films' ? 'un film' : data.type === 'series' ? 'une série' : 'un film ou une série'} pour l'ajouter
+		à votre bibliothèque.
 	</p>
 {/if}
 

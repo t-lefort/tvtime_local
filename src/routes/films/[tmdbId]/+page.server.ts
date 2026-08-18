@@ -5,6 +5,7 @@ import { movies, movieWatches, userMovies } from '$lib/server/db/schema';
 import { getMoviesWithWatch } from '$lib/server/queries';
 import { addOrUpdateMovie, collectMovie, getUserMovie, uncollectMovie } from '$lib/server/movies';
 import { requireUser } from '$lib/server/users';
+import { searchBackHref } from '$lib/search';
 import {
 	extractCast,
 	extractCollection,
@@ -55,7 +56,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const user = requireUser(locals);
 	const tmdbId = tmdbIdFromParam(params.tmdbId);
 	const q = url.searchParams.get('q')?.trim() ?? '';
-	const backHref = q ? `/recherche?type=films&q=${encodeURIComponent(q)}` : '/films';
+	const backHref = searchBackHref(q, url.searchParams.get('type'), '/films');
 	const localizedMedia = getMovieLocalizedMedia(tmdbId).catch(() => []);
 
 	const local = getMoviesWithWatch(user.id, { tmdbId })[0];
