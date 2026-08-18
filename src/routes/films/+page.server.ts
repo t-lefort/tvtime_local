@@ -1,9 +1,11 @@
+import { parseSort } from '$lib/sort';
 import { getMoviesWithWatch } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ url, locals }) => {
 	const filter = url.searchParams.get('filtre') ?? 'tous';
+	const sort = parseSort(url.searchParams.get('tri'));
 	const all = getMoviesWithWatch(requireUser(locals).id);
 
 	const counts = {
@@ -34,10 +36,14 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		addedAt: m.addedAt
 	}));
 
-	// Activité la plus récente d'abord (dernier visionnage, sinon date d'ajout)
-	movies.sort((a, b) =>
-		(b.lastWatchedAt ?? b.addedAt).localeCompare(a.lastWatchedAt ?? a.addedAt)
-	);
+	if (sort === 'alpha') {
+		movies.sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+	} else {
+		// Activité la plus récente d'abord (dernier visionnage, sinon date d'ajout)
+		movies.sort((a, b) =>
+			(b.lastWatchedAt ?? b.addedAt).localeCompare(a.lastWatchedAt ?? a.addedAt)
+		);
+	}
 
-	return { movies, filter, counts };
+	return { movies, filter, sort, counts };
 };
