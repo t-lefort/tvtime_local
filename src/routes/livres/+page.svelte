@@ -3,35 +3,78 @@
 	import LibraryHeader from '$lib/components/LibraryHeader.svelte';
 	import LibrarySearch from '$lib/components/LibrarySearch.svelte';
 	import SortToggle from '$lib/components/SortToggle.svelte';
-	import { DEFAULT_SORT } from '$lib/sort';
+	import { matchesQuery, parseQuery } from '$lib/library';
+	import { updateListParams } from '$lib/library-nav';
+	import { DEFAULT_SORT, type SortOrder } from '$lib/sort';
 
 	let { data } = $props();
+
+	type Book = (typeof data.books)[number];
+
+	const chips = [
+		{ key: 'tous', label: 'Tous', match: () => true },
+		{ key: 'collection', label: 'Ma collection', match: (b: Book) => b.inCollection },
+		{ key: 'souhaits', label: 'Envies', match: (b: Book) => b.wishlist },
+		{ key: 'nonlus', label: 'À lire', match: (b: Book) => b.readingStatus === 'unread' },
+		{ key: 'encours', label: 'En cours', match: (b: Book) => b.readingStatus === 'reading' },
+		{ key: 'lus', label: 'Lus', match: (b: Book) => b.readingStatus === 'read' },
+		{ key: 'favoris', label: 'Favoris', match: (b: Book) => b.favorite }
+	];
+
+	// Recherche, filtre et tri vivent côté page : ils réagissent à la frappe et
+	// au clic sans recharger. Une vraie navigation les remet à ce que dit l'URL.
+	// svelte-ignore state_referenced_locally
+	let q = $state(data.q);
+	// svelte-ignore state_referenced_locally
+	let filter = $state(data.filter);
+	// svelte-ignore state_referenced_locally
+	let sort = $state<SortOrder>(data.sort);
+	$effect(() => void (q = data.q));
+	$effect(() => void (filter = data.filter));
+	$effect(() => void (sort = data.sort));
+
+	const sorted = $derived(
+		[...data.books].sort((a, b) =>
+			sort === 'alpha'
+				? a.title.localeCompare(b.title, 'fr')
+				: b.addedAt.localeCompare(a.addedAt) || a.title.localeCompare(b.title, 'fr')
+		)
+	);
+
+	const needle = $derived(parseQuery(q).needle);
+	const matching = $derived(
+		sorted.filter((book) =>
+			matchesQuery(needle, [book.title, book.seriesTitle, book.publisher, ...book.authors])
+		)
+	);
+
+	// Les compteurs portent sur le résultat de la recherche : les puces disent
+	// combien de titres restent dans chaque catégorie.
+	const counts = $derived(
+		Object.fromEntries(chips.map((chip) => [chip.key, matching.filter(chip.match).length]))
+	);
+
+	const books = $derived(matching.filter(chips.find((chip) => chip.key === filter)?.match ?? (() => true)));
 
 	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
 		const params = new URLSearchParams();
 		if (key !== 'tous') params.set('filtre', key);
-		if (data.sort !== DEFAULT_SORT) params.set('tri', data.sort);
-		if (data.q) params.set('q', data.q);
+		if (sort !== DEFAULT_SORT) params.set('tri', sort);
+		if (q.trim()) params.set('q', q.trim());
 		const query = params.toString();
 		return query ? `/livres?${query}` : '/livres';
 	}
 
-	/** Paramètres à conserver dans les liens de tri et le champ de recherche. */
-	const kept = $derived({
-		...(data.filter === 'tous' ? {} : { filtre: data.filter }),
-		...(data.q ? { q: data.q } : {})
-	});
+	function pick(event: MouseEvent, key: string) {
+		if (updateListParams(event, { filtre: key === 'tous' ? null : key })) filter = key;
+	}
 
-	const chips = [
-		{ key: 'tous', label: 'Tous' },
-		{ key: 'collection', label: 'Ma collection' },
-		{ key: 'souhaits', label: 'Envies' },
-		{ key: 'nonlus', label: 'À lire' },
-		{ key: 'encours', label: 'En cours' },
-		{ key: 'lus', label: 'Lus' },
-		{ key: 'favoris', label: 'Favoris' }
-	];
+	/** Paramètres à conserver dans les liens de tri. */
+	const kept = $derived({
+		...(filter === 'tous' ? {} : { filtre: filter }),
+		...(q.trim() ? { q: q.trim() } : {})
+	});
 </script>
 
 <svelte:head>
@@ -41,33 +84,33 @@
 <LibraryHeader current="livres" counts={data.libraryCounts} />
 
 <LibrarySearch
-	value={data.q}
+	bind:value={q}
 	placeholder="Titre, série, auteur, éditeur…"
-	hidden={data.filter === 'tous' ? {} : { filtre: data.filter }}
+	hidden={filter === 'tous' ? {} : { filtre: filter }}
 />
 
 <div class="scrollbar-none -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
 	{#each chips as chip (chip.key)}
 		<a
 			href={filterHref(chip.key)}
-			data-sveltekit-replacestate
+			onclick={(event) => pick(event, chip.key)}
 			class="shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
-				{data.filter === chip.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
+				{filter === chip.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
 		>
 			{chip.label}
-			<span class="opacity-70">· {data.counts[chip.key as keyof typeof data.counts]}</span>
+			<span class="opacity-70">· {counts[chip.key]}</span>
 		</a>
 	{/each}
 </div>
 
-<SortToggle base="/livres" sort={data.sort} params={kept} />
+<SortToggle base="/livres" bind:sort params={kept} />
 
-{#if data.books.length === 0}
+{#if books.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
 		<p class="mb-2 text-3xl">📚</p>
-		{#if data.q}
+		{#if q.trim()}
 			<p>Aucun livre ne correspond à cette recherche.</p>
-		{:else if data.filter === 'tous'}
+		{:else if filter === 'tous'}
 			<p>Aucun livre pour l'instant. Ajoutez-en via la recherche.</p>
 		{:else}
 			<p>Aucun livre dans cette catégorie.</p>
@@ -75,7 +118,7 @@
 	</div>
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-		{#each data.books as book (book.id)}
+		{#each books as book (book.id)}
 			<a href="/livres/{book.id}" class="group min-w-0">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 					<BookCover url={book.coverUrl} alt={book.title} />

@@ -1,38 +1,21 @@
-import { matchesQuery, parseQuery } from '$lib/library';
+import { parseQuery } from '$lib/library';
 import { parseSort } from '$lib/sort';
 import { getLibraryCounts } from '$lib/server/library';
-import { getShowsWithProgress, type ShowState } from '$lib/server/queries';
+import { getShowsWithProgress } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
 
-const FILTERS: Record<string, ShowState | null> = {
-	toutes: null,
-	encours: 'watching',
-	ajour: 'uptodate',
-	terminees: 'finished',
-	arretees: 'stopped',
-	pascommencees: 'notstarted'
-};
-
 export const load: PageServerLoad = ({ url, locals }) => {
 	const user = requireUser(locals);
-	const filter = url.searchParams.get('filtre') ?? 'toutes';
-	const sort = parseSort(url.searchParams.get('tri'));
-	const { q, needle } = parseQuery(url.searchParams.get('q'));
-	const all = getShowsWithProgress(user.id).filter((s) => matchesQuery(needle, [s.name, s.originalName]));
-
-	// Les compteurs portent sur le résultat de la recherche : les puces disent
-	// combien de titres restent dans chaque catégorie.
-	const counts: Record<string, number> = { toutes: all.length };
-	for (const [key, state] of Object.entries(FILTERS)) {
-		if (state) counts[key] = all.filter((s) => s.state === state).length;
-	}
-
-	const state = FILTERS[filter] ?? null;
-	const shows = (state ? all.filter((s) => s.state === state) : all).map((s) => ({
+	// La liste complète part en une fois : recherche, puces et tri sont
+	// appliqués par la page elle-même, donc sans aller-retour serveur. Les
+	// paramètres d'URL ne servent plus qu'à retrouver le même écran au
+	// chargement (partage, rechargement, rendu sans JavaScript).
+	const shows = getShowsWithProgress(user.id).map((s) => ({
 		id: s.id,
 		tmdbId: s.tmdbId,
 		name: s.name,
+		originalName: s.originalName,
 		posterPath: s.posterPath,
 		state: s.state,
 		favorite: s.favorite,
@@ -41,17 +24,11 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		lastWatchedAt: s.lastWatchedAt
 	}));
 
-	if (sort === 'alpha') {
-		shows.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-	} else {
-		// Les plus récemment regardées d'abord, puis alphabétique
-		shows.sort((a, b) => {
-			if (a.lastWatchedAt && b.lastWatchedAt) return b.lastWatchedAt.localeCompare(a.lastWatchedAt);
-			if (a.lastWatchedAt) return -1;
-			if (b.lastWatchedAt) return 1;
-			return a.name.localeCompare(b.name, 'fr');
-		});
-	}
-
-	return { shows, filter, sort, counts, q, libraryCounts: getLibraryCounts(user.id) };
+	return {
+		shows,
+		filter: url.searchParams.get('filtre') ?? 'toutes',
+		sort: parseSort(url.searchParams.get('tri')),
+		q: parseQuery(url.searchParams.get('q')).q,
+		libraryCounts: getLibraryCounts(user.id)
+	};
 };
