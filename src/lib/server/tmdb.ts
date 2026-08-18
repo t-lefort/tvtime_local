@@ -298,10 +298,13 @@ export interface StoredCastMember {
 }
 
 /** Nombre d'acteurs conservés dans la distribution (les plus haut au générique). */
-const MAX_CAST = 15;
+export const MAX_CAST = 15;
+
+/** Plafond de la distribution complète servie à la demande (certains films en ont 200+). */
+const MAX_FULL_CAST = 100;
 
 /** Réduit les crédits TMDB à la distribution principale, prête à stocker. */
-export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[] {
+export function extractCast(credits: TmdbCredits | undefined, limit = MAX_CAST): StoredCastMember[] {
 	const cast = credits?.cast;
 	if (!cast?.length) return [];
 	// Un acteur peut apparaître plusieurs fois (plusieurs rôles) : on déduplique par id
@@ -315,7 +318,7 @@ export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[
 			}
 			continue;
 		}
-		if (byId.size >= MAX_CAST) continue;
+		if (byId.size >= limit) continue;
 		byId.set(c.id, {
 			id: c.id,
 			name: c.name,
@@ -324,6 +327,40 @@ export function extractCast(credits: TmdbCredits | undefined): StoredCastMember[
 		});
 	}
 	return [...byId.values()];
+}
+
+/** Crédits agrégés d'une série : la distribution de toutes les saisons, comme sur TMDB. */
+interface TmdbAggregateCastMember {
+	id: number;
+	name: string;
+	profile_path: string | null;
+	order?: number;
+	roles?: { character: string }[];
+}
+
+/**
+ * Distribution complète d'une série ou d'un film, au-delà des acteurs stockés en base.
+ * Les séries passent par les crédits agrégés (toutes saisons confondues), comme TMDB.
+ */
+export async function getFullCast(
+	kind: 'tv' | 'movie',
+	tmdbId: number
+): Promise<StoredCastMember[]> {
+	if (kind === 'movie') {
+		const credits = await tmdb<TmdbCredits>(`/movie/${tmdbId}/credits`);
+		return extractCast(credits, MAX_FULL_CAST);
+	}
+	const credits = await tmdb<{ cast?: TmdbAggregateCastMember[] }>(
+		`/tv/${tmdbId}/aggregate_credits`
+	);
+	const cast = (credits.cast ?? []).map((member, index) => ({
+		id: member.id,
+		name: member.name,
+		character: (member.roles ?? []).map((role) => role.character).filter(Boolean).join(' / '),
+		profile_path: member.profile_path,
+		order: member.order ?? index
+	}));
+	return extractCast({ cast }, MAX_FULL_CAST);
 }
 
 /** Membre d'équipe stocké en base (colonne crew, JSON) : réalisation et production. */

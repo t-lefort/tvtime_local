@@ -203,7 +203,7 @@
 
 <CastList cast={directors} title="Réalisation" />
 
-<CastList cast={movie.cast} />
+<CastList cast={movie.cast} fullHref="/casting/films/{movie.tmdbId}" />
 
 <LocalizedMedia variants={data.localizedMedia} fallback="🎬" />
 
