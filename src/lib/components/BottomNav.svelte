@@ -39,7 +39,10 @@
 	}
 </script>
 
-<nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/90 backdrop-blur"
+<!-- Fond opaque plutot qu'un flou : la barre est fixe, et re-flouter ce qui
+	 defile dessous coute une recomposition a chaque image, ce qui se sent
+	 immediatement sur telephone. -->
+<nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg"
 	style="padding-bottom: env(safe-area-inset-bottom)">
 	<div class="mx-auto flex max-w-2xl">
 		{#each items as item (item.href)}

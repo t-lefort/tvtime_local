@@ -200,7 +200,7 @@
 	 pour affiner la requête sans remonter en haut de page. Les marges négatives
 	 étendent le fond sur les gouttières de <main> pour masquer ce qui défile dessous. -->
 <div
-	class="sticky top-0 z-20 -mx-4 mb-3 border-b border-line/60 bg-bg/95 px-4 pt-3 pb-3 backdrop-blur md:-mx-6 md:px-6"
+	class="sticky top-0 z-20 -mx-4 mb-3 border-b border-line/60 bg-bg px-4 pt-3 pb-3 md:-mx-6 md:px-6"
 >
 	<div class="scrollbar-none mb-3 flex gap-2 overflow-x-auto">
 		{#each TABS as t (t.key)}

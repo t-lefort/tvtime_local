@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
+import { compressResponse } from '$lib/server/compress';
 
 export const init: ServerInit = async () => {
 	if (building) return;
@@ -21,5 +22,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, '/profils');
 	}
 
-	return resolve(event);
+	return compressResponse(await resolve(event), event.request.headers.get('accept-encoding') ?? '');
 };
