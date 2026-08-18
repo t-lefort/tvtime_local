@@ -4,34 +4,76 @@
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import SortToggle from '$lib/components/SortToggle.svelte';
-	import { DEFAULT_SORT } from '$lib/sort';
+	import { matchesQuery, parseQuery } from '$lib/library';
+	import { updateListParams } from '$lib/library-nav';
+	import { DEFAULT_SORT, type SortOrder } from '$lib/sort';
 
 	let { data } = $props();
+
+	type Show = (typeof data.shows)[number];
+
+	const chips = [
+		{ key: 'toutes', label: 'Toutes', match: () => true },
+		{ key: 'encours', label: 'En cours', match: (s: Show) => s.state === 'watching' },
+		{ key: 'ajour', label: 'À jour', match: (s: Show) => s.state === 'uptodate' },
+		{ key: 'pascommencees', label: 'Pas commencées', match: (s: Show) => s.state === 'notstarted' },
+		{ key: 'terminees', label: 'Terminées', match: (s: Show) => s.state === 'finished' },
+		{ key: 'arretees', label: 'Arrêtées', match: (s: Show) => s.state === 'stopped' }
+	];
+
+	// Recherche, filtre et tri vivent côté page : ils réagissent à la frappe et
+	// au clic sans recharger. Une vraie navigation les remet à ce que dit l'URL.
+	// svelte-ignore state_referenced_locally
+	let q = $state(data.q);
+	// svelte-ignore state_referenced_locally
+	let filter = $state(data.filter);
+	// svelte-ignore state_referenced_locally
+	let sort = $state<SortOrder>(data.sort);
+	$effect(() => void (q = data.q));
+	$effect(() => void (filter = data.filter));
+	$effect(() => void (sort = data.sort));
+
+	const sorted = $derived(
+		[...data.shows].sort((a, b) => {
+			if (sort === 'alpha') return a.name.localeCompare(b.name, 'fr');
+			// Les plus récemment regardées d'abord, puis alphabétique
+			if (a.lastWatchedAt && b.lastWatchedAt) return b.lastWatchedAt.localeCompare(a.lastWatchedAt);
+			if (a.lastWatchedAt) return -1;
+			if (b.lastWatchedAt) return 1;
+			return a.name.localeCompare(b.name, 'fr');
+		})
+	);
+
+	const needle = $derived(parseQuery(q).needle);
+	const matching = $derived(sorted.filter((s) => matchesQuery(needle, [s.name, s.originalName])));
+
+	// Les compteurs portent sur le résultat de la recherche : les puces disent
+	// combien de titres restent dans chaque catégorie.
+	const counts = $derived(
+		Object.fromEntries(chips.map((chip) => [chip.key, matching.filter(chip.match).length]))
+	);
+
+	const shows = $derived(matching.filter(chips.find((chip) => chip.key === filter)?.match ?? (() => true)));
 
 	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
 		const params = new URLSearchParams();
 		if (key !== 'toutes') params.set('filtre', key);
-		if (data.sort !== DEFAULT_SORT) params.set('tri', data.sort);
-		if (data.q) params.set('q', data.q);
+		if (sort !== DEFAULT_SORT) params.set('tri', sort);
+		if (q.trim()) params.set('q', q.trim());
 		const query = params.toString();
 		return query ? `/series?${query}` : '/series';
 	}
 
-	/** Paramètres à conserver dans les liens de tri et le champ de recherche. */
-	const kept = $derived({
-		...(data.filter === 'toutes' ? {} : { filtre: data.filter }),
-		...(data.q ? { q: data.q } : {})
-	});
+	function pick(event: MouseEvent, key: string) {
+		if (updateListParams(event, { filtre: key === 'toutes' ? null : key })) filter = key;
+	}
 
-	const chips = [
-		{ key: 'toutes', label: 'Toutes' },
-		{ key: 'encours', label: 'En cours' },
-		{ key: 'ajour', label: 'À jour' },
-		{ key: 'pascommencees', label: 'Pas commencées' },
-		{ key: 'terminees', label: 'Terminées' },
-		{ key: 'arretees', label: 'Arrêtées' }
-	];
+	/** Paramètres à conserver dans les liens de tri. */
+	const kept = $derived({
+		...(filter === 'toutes' ? {} : { filtre: filter }),
+		...(q.trim() ? { q: q.trim() } : {})
+	});
 </script>
 
 <svelte:head>
@@ -41,39 +83,39 @@
 <LibraryHeader current="series" counts={data.libraryCounts} />
 
 <LibrarySearch
-	value={data.q}
+	bind:value={q}
 	placeholder="Titre d'une série…"
-	hidden={data.filter === 'toutes' ? {} : { filtre: data.filter }}
+	hidden={filter === 'toutes' ? {} : { filtre: filter }}
 />
 
 <div class="scrollbar-none -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
 	{#each chips as chip (chip.key)}
 		<a
 			href={filterHref(chip.key)}
-			data-sveltekit-replacestate
+			onclick={(event) => pick(event, chip.key)}
 			class="shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
-				{data.filter === chip.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
+				{filter === chip.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
 		>
 			{chip.label}
-			{#if data.counts[chip.key] !== undefined}<span class="opacity-70">· {data.counts[chip.key]}</span>{/if}
+			<span class="opacity-70">· {counts[chip.key]}</span>
 		</a>
 	{/each}
 </div>
 
-<SortToggle base="/series" sort={data.sort} params={kept} />
+<SortToggle base="/series" bind:sort params={kept} />
 
-{#if data.shows.length === 0}
+{#if shows.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
 		<p class="mb-2 text-3xl">📺</p>
-		<p>{data.q ? 'Aucune série ne correspond à cette recherche.' : 'Aucune série dans cette catégorie.'}</p>
+		<p>{q.trim() ? 'Aucune série ne correspond à cette recherche.' : 'Aucune série dans cette catégorie.'}</p>
 	</div>
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-		{#each data.shows as show (show.id)}
+		{#each shows as show (show.id)}
 			<a href="/series/{show.tmdbId}" class="group">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 					<div class="h-full w-full {show.state === 'stopped' ? 'opacity-40 grayscale' : ''}">
-						<Poster path={show.posterPath} alt={show.name} size="w342" />
+						<Poster path={show.posterPath} alt={show.name} size="w342" grid />
 					</div>
 					{#if show.favorite}
 						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>

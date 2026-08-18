@@ -20,17 +20,21 @@
 	</a>
 </div>
 
-<nav class="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" aria-label="Type de média">
+<!-- Grille de trois colonnes égales plutôt qu'une rangée qui défile : les trois
+	 catalogues tiennent toujours dans la largeur, même sur un écran étroit, au
+	 lieu que le dernier soit coupé sur le bord. -->
+<nav class="mb-4 grid grid-cols-3 gap-1.5 sm:gap-2" aria-label="Type de média">
 	{#each LIBRARY_SECTIONS as item (item.key)}
 		<a
 			href={item.href}
 			aria-current={current === item.key ? 'page' : undefined}
-			class="flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors
+			class="flex min-w-0 items-center justify-center gap-1 rounded-full px-2 py-2 text-[13px] font-semibold transition-colors sm:gap-1.5 sm:px-4 sm:text-sm
 				{current === item.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
 		>
-			<span aria-hidden="true">{item.icon}</span>
-			{item.label}
-			<span class="opacity-70">· {counts[item.key]}</span>
+			<!-- Sur les écrans les plus étroits, l'emoji est sacrifié avant le libellé. -->
+			<span aria-hidden="true" class="shrink-0 max-[360px]:hidden">{item.icon}</span>
+			<span class="truncate">{item.label}</span>
+			<span class="shrink-0 opacity-70">· {counts[item.key]}</span>
 		</a>
 	{/each}
 </nav>

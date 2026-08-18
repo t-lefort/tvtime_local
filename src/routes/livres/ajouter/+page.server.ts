@@ -49,6 +49,7 @@ export const actions: Actions = {
 			pageCount: null,
 			coverUrl: null,
 			seriesTitle: String(data.get('seriesTitle') ?? '').trim() || null,
+			seriesUri: null,
 			volume: String(data.get('volume') ?? '').trim() || null,
 			source: 'manual',
 			sourceId: null

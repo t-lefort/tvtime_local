@@ -28,6 +28,7 @@ const edition = addOrUpdateBook(
 		pageCount: 359,
 		coverUrl: null,
 		seriesTitle: 'Akira (1999)',
+		seriesUri: null,
 		volume: '1',
 		source: 'manual',
 		sourceId: null
