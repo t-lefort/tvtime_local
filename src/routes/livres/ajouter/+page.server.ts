@@ -1,7 +1,7 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { isbn13To10, normalizeIsbn } from '$lib/isbn';
-import { getBookByInventaireWork, getBookByIsbn, searchBooks, type BookMetadata } from '$lib/server/book-metadata';
-import { addOrUpdateBook, collectBook } from '$lib/server/books';
+import { searchBooks, type BookMetadata } from '$lib/server/book-metadata';
+import { addOrUpdateBook, collectBook, collectBookFromSource } from '$lib/server/books';
 import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -18,19 +18,14 @@ export const load: PageServerLoad = async ({ url }) => {
 export const actions: Actions = {
 	add: async ({ request, locals }) => {
 		const user = requireUser(locals);
-		const data = await request.formData();
-		const sourceId = String(data.get('sourceId') ?? '');
-		let metadata: BookMetadata | null = null;
+		const sourceId = String((await request.formData()).get('sourceId') ?? '');
+		let book;
 		try {
-			metadata = sourceId.startsWith('isbn:')
-				? await getBookByIsbn(sourceId.slice(5))
-				: await getBookByInventaireWork(sourceId);
+			book = await collectBookFromSource(user.id, sourceId);
 		} catch {
 			return fail(502, { error: 'Impossible de récupérer cette édition.' });
 		}
-		if (!metadata) return fail(404, { error: 'Aucune édition exploitable trouvée. Utilisez l’ajout manuel.' });
-		const book = addOrUpdateBook(metadata);
-		collectBook(user.id, book);
+		if (!book) return fail(404, { error: 'Aucune édition exploitable trouvée. Utilisez l’ajout manuel.' });
 		redirect(303, `/livres/${book.id}`);
 	},
 	manual: async ({ request, locals }) => {

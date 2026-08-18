@@ -1,4 +1,6 @@
 <script lang="ts">
+	import LibraryHeader from '$lib/components/LibraryHeader.svelte';
+	import LibrarySearch from '$lib/components/LibrarySearch.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import SortToggle from '$lib/components/SortToggle.svelte';
 	import { yearOf } from '$lib/format';
@@ -6,14 +8,21 @@
 
 	let { data } = $props();
 
-	/** Conserve l'ordre courant en changeant de filtre (et inversement). */
+	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
 		const params = new URLSearchParams();
 		if (key !== 'tous') params.set('filtre', key);
 		if (data.sort !== DEFAULT_SORT) params.set('tri', data.sort);
+		if (data.q) params.set('q', data.q);
 		const query = params.toString();
 		return query ? `/films?${query}` : '/films';
 	}
+
+	/** Paramètres à conserver dans les liens de tri et le champ de recherche. */
+	const kept = $derived({
+		...(data.filter === 'tous' ? {} : { filtre: data.filter }),
+		...(data.q ? { q: data.q } : {})
+	});
 
 	const chips = [
 		{ key: 'tous', label: 'Tous' },
@@ -30,7 +39,13 @@
 	<title>Films — TV Time local</title>
 </svelte:head>
 
-<h1 class="mb-4 text-2xl font-bold">Films</h1>
+<LibraryHeader current="films" counts={data.libraryCounts} />
+
+<LibrarySearch
+	value={data.q}
+	placeholder="Titre d'un film…"
+	hidden={data.filter === 'tous' ? {} : { filtre: data.filter }}
+/>
 
 <div class="scrollbar-none -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
 	{#each chips as chip (chip.key)}
@@ -46,16 +61,14 @@
 	{/each}
 </div>
 
-<SortToggle
-	base="/films"
-	sort={data.sort}
-	params={data.filter === 'tous' ? {} : { filtre: data.filter }}
-/>
+<SortToggle base="/films" sort={data.sort} params={kept} />
 
 {#if data.movies.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
-		{#if data.filter === 'tous'}
-			<p class="mb-1 text-3xl">🎬</p>
+		<p class="mb-2 text-3xl">🎬</p>
+		{#if data.q}
+			<p>Aucun film ne correspond à cette recherche.</p>
+		{:else if data.filter === 'tous'}
 			<p>Aucun film pour l'instant. Ajoutez-en via la recherche.</p>
 		{:else}
 			<p>Aucun film dans cette catégorie.</p>

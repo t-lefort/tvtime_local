@@ -1,4 +1,6 @@
 <script lang="ts">
+	import LibraryHeader from '$lib/components/LibraryHeader.svelte';
+	import LibrarySearch from '$lib/components/LibrarySearch.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import SortToggle from '$lib/components/SortToggle.svelte';
@@ -6,14 +8,21 @@
 
 	let { data } = $props();
 
-	/** Conserve l'ordre courant en changeant de filtre (et inversement). */
+	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
 		const params = new URLSearchParams();
 		if (key !== 'toutes') params.set('filtre', key);
 		if (data.sort !== DEFAULT_SORT) params.set('tri', data.sort);
+		if (data.q) params.set('q', data.q);
 		const query = params.toString();
 		return query ? `/series?${query}` : '/series';
 	}
+
+	/** Paramètres à conserver dans les liens de tri et le champ de recherche. */
+	const kept = $derived({
+		...(data.filter === 'toutes' ? {} : { filtre: data.filter }),
+		...(data.q ? { q: data.q } : {})
+	});
 
 	const chips = [
 		{ key: 'toutes', label: 'Toutes' },
@@ -29,7 +38,13 @@
 	<title>Séries — TV Time local</title>
 </svelte:head>
 
-<h1 class="mb-4 text-2xl font-bold">Séries</h1>
+<LibraryHeader current="series" counts={data.libraryCounts} />
+
+<LibrarySearch
+	value={data.q}
+	placeholder="Titre d'une série…"
+	hidden={data.filter === 'toutes' ? {} : { filtre: data.filter }}
+/>
 
 <div class="scrollbar-none -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
 	{#each chips as chip (chip.key)}
@@ -45,15 +60,12 @@
 	{/each}
 </div>
 
-<SortToggle
-	base="/series"
-	sort={data.sort}
-	params={data.filter === 'toutes' ? {} : { filtre: data.filter }}
-/>
+<SortToggle base="/series" sort={data.sort} params={kept} />
 
 {#if data.shows.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
-		<p>Aucune série dans cette catégorie.</p>
+		<p class="mb-2 text-3xl">📺</p>
+		<p>{data.q ? 'Aucune série ne correspond à cette recherche.' : 'Aucune série dans cette catégorie.'}</p>
 	</div>
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">

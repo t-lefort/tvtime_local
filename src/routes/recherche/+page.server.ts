@@ -1,4 +1,4 @@
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import { movies, shows, userMovies, userShows } from '$lib/server/db/schema';
@@ -10,6 +10,8 @@ import {
 	type TmdbMovieSummary,
 	type TmdbShowSummary
 } from '$lib/server/tmdb';
+import { searchBooks, type BookSearchResult } from '$lib/server/book-metadata';
+import { bookTitleKey, collectBookFromSource, collectedBookIds } from '$lib/server/books';
 import { addOrUpdateShow, followShow } from '$lib/server/shows';
 import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
 import { requireUser } from '$lib/server/users';
@@ -39,7 +41,10 @@ const emptySuggestions = {
 function toMovieResult(r: TmdbMovieSummary, localId: number | null): SearchResult {
 	return {
 		kind: 'films',
+		key: `films:${r.id}`,
 		tmdbId: r.id,
+		sourceId: null,
+		coverUrl: null,
 		name: r.title,
 		originalName: r.original_title,
 		overview: r.overview,
@@ -55,7 +60,10 @@ function toMovieResult(r: TmdbMovieSummary, localId: number | null): SearchResul
 function toShowResult(r: TmdbShowSummary, localId: number | null): SearchResult {
 	return {
 		kind: 'series',
+		key: `series:${r.id}`,
 		tmdbId: r.id,
+		sourceId: null,
+		coverUrl: null,
 		name: r.name,
 		originalName: r.original_name,
 		overview: r.overview,
@@ -64,6 +72,29 @@ function toShowResult(r: TmdbShowSummary, localId: number | null): SearchResult 
 		date: r.first_air_date,
 		voteAverage: r.vote_average,
 		popularity: r.popularity ?? 0,
+		localId
+	};
+}
+
+/**
+ * Un livre n'a ni identifiant TMDB, ni jaquette TMDB, ni note : la fiche de
+ * recherche s'appuie sur la couverture et la description du catalogue.
+ */
+function toBookResult(r: BookSearchResult, localId: number | null): SearchResult {
+	return {
+		kind: 'livres',
+		key: `livres:${r.sourceId}`,
+		tmdbId: null,
+		sourceId: r.sourceId,
+		name: r.title,
+		originalName: r.title,
+		overview: r.description ?? '',
+		posterPath: null,
+		coverUrl: r.coverUrl,
+		backdropPath: null,
+		date: null,
+		voteAverage: 0,
+		popularity: 0,
 		localId
 	};
 }
@@ -102,10 +133,16 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 	try {
 		// Les sociétés et personnes n'ont d'intérêt que là où des films sont proposés.
-		const withSuggestions = type !== 'series';
-		const [foundShows, foundMovies, companies, people] = await Promise.all([
-			type === 'films' ? [] : searchTv(q),
-			type === 'series' ? [] : searchMovie(q),
+		const withSuggestions = type === 'tout' || type === 'films';
+		const wantsShows = type === 'tout' || type === 'series';
+		const wantsMovies = type === 'tout' || type === 'films';
+		const wantsBooks = type === 'tout' || type === 'livres';
+		const [foundShows, foundMovies, foundBooks, companies, people] = await Promise.all([
+			wantsShows ? searchTv(q) : [],
+			wantsMovies ? searchMovie(q) : [],
+			// Les catalogues bibliographiques sont lents et faillibles : leur panne
+			// ne doit pas emporter les résultats TMDB de l'onglet « Tout ».
+			wantsBooks ? searchBooks(q).catch(() => [] as BookSearchResult[]) : [],
 			withSuggestions ? searchCompanies(q) : [],
 			withSuggestions ? searchPeople(q) : []
 		]);
@@ -122,12 +159,16 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 		const collected = foundMovies.length ? collectedMovieIds(user.id) : new Map<number, number>();
 		const followed = foundShows.length ? followedShowIds(user.id) : new Map<number, number>();
+		const owned = foundBooks.length ? collectedBookIds(user.id) : new Map<string, number>();
 		const showResults = foundShows.map((r) => toShowResult(r, followed.get(r.id) ?? null));
 		const movieResults = foundMovies.map((r) => toMovieResult(r, collected.get(r.id) ?? null));
+		const bookResults = foundBooks.map((r) =>
+			toBookResult(r, owned.get(r.sourceId) ?? owned.get(bookTitleKey(r.title)) ?? null)
+		);
 		const results =
 			type === 'tout'
-				? interleaveResults(showResults, movieResults)
-				: [...showResults, ...movieResults];
+				? interleaveResults(showResults, movieResults, bookResults)
+				: [...showResults, ...movieResults, ...bookResults];
 
 		return { q, type, results, error: null, ...suggestions };
 	} catch (e) {
@@ -158,5 +199,21 @@ export const actions: Actions = {
 		const movie = await addOrUpdateMovie(tmdbId);
 		collectMovie(user.id, movie.id);
 		redirect(303, `/films/${movie.tmdbId}`);
+	},
+
+	addBook: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const sourceId = String((await request.formData()).get('sourceId') ?? '');
+		if (!sourceId) return;
+		let book;
+		try {
+			book = await collectBookFromSource(user.id, sourceId);
+		} catch {
+			return fail(502, { error: 'Impossible de récupérer cette édition.' });
+		}
+		// Une œuvre sans édition exploitable se rattrape sur la page d'ajout,
+		// qui propose le scan et la saisie manuelle.
+		if (!book) redirect(303, '/livres/ajouter');
+		redirect(303, `/livres/${book.id}`);
 	}
 };

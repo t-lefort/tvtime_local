@@ -1,13 +1,19 @@
+import { matchesQuery, parseQuery } from '$lib/library';
 import { parseSort } from '$lib/sort';
+import { getLibraryCounts } from '$lib/server/library';
 import { getMoviesWithWatch } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ url, locals }) => {
+	const user = requireUser(locals);
 	const filter = url.searchParams.get('filtre') ?? 'tous';
 	const sort = parseSort(url.searchParams.get('tri'));
-	const all = getMoviesWithWatch(requireUser(locals).id);
+	const { q, needle } = parseQuery(url.searchParams.get('q'));
+	const all = getMoviesWithWatch(user.id).filter((m) => matchesQuery(needle, [m.title, m.originalTitle]));
 
+	// Les compteurs portent sur le résultat de la recherche : les puces disent
+	// combien de titres restent dans chaque catégorie.
 	const counts = {
 		tous: all.length,
 		avoir: all.filter((m) => m.watchCount === 0).length,
@@ -45,5 +51,5 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		);
 	}
 
-	return { movies, filter, sort, counts };
+	return { movies, filter, sort, counts, q, libraryCounts: getLibraryCounts(user.id) };
 };

@@ -1,4 +1,6 @@
+import { matchesQuery, parseQuery } from '$lib/library';
 import { parseSort } from '$lib/sort';
+import { getLibraryCounts } from '$lib/server/library';
 import { getShowsWithProgress, type ShowState } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
 import type { PageServerLoad } from './$types';
@@ -13,10 +15,14 @@ const FILTERS: Record<string, ShowState | null> = {
 };
 
 export const load: PageServerLoad = ({ url, locals }) => {
+	const user = requireUser(locals);
 	const filter = url.searchParams.get('filtre') ?? 'toutes';
 	const sort = parseSort(url.searchParams.get('tri'));
-	const all = getShowsWithProgress(requireUser(locals).id);
+	const { q, needle } = parseQuery(url.searchParams.get('q'));
+	const all = getShowsWithProgress(user.id).filter((s) => matchesQuery(needle, [s.name, s.originalName]));
 
+	// Les compteurs portent sur le résultat de la recherche : les puces disent
+	// combien de titres restent dans chaque catégorie.
 	const counts: Record<string, number> = { toutes: all.length };
 	for (const [key, state] of Object.entries(FILTERS)) {
 		if (state) counts[key] = all.filter((s) => s.state === state).length;
@@ -47,5 +53,5 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		});
 	}
 
-	return { shows, filter, sort, counts };
+	return { shows, filter, sort, counts, q, libraryCounts: getLibraryCounts(user.id) };
 };

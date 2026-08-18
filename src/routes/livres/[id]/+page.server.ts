@@ -42,20 +42,21 @@ export const actions: Actions = {
 			favorite: data.get('favorite') === '1'
 		});
 	},
+	// Meme contrat que les films et les series : 1-10, 0 retire la note.
 	rate: async ({ params, request, locals }) => {
 		const user = requireUser(locals);
 		const book = requireBook(user.id, params.id);
-		const data = await request.formData();
-		const raw = Number(data.get('rating'));
+		const raw = Number((await request.formData()).get('rating'));
 		updateUserBook(user.id, book.id, {
-			rating: Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null,
-			review: String(data.get('review') ?? '').trim() || null
+			rating: Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null
 		});
 	},
-	loan: async ({ params, request, locals }) => {
+	review: async ({ params, request, locals }) => {
 		const user = requireUser(locals);
 		const book = requireBook(user.id, params.id);
-		updateUserBook(user.id, book.id, { loanedTo: String((await request.formData()).get('loanedTo') ?? '').trim() || null });
+		const review = String((await request.formData()).get('review') ?? '').trim();
+		updateUserBook(user.id, book.id, { review: review || null });
+		return { ok: review ? 'Avis enregistré.' : 'Avis supprimé.' };
 	},
 	edit: async ({ params, request, locals }) => {
 		const user = requireUser(locals);

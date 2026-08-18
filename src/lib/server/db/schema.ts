@@ -250,7 +250,6 @@ export const userBooks = sqliteTable(
 		review: text('review'),
 		signed: integer('signed', { mode: 'boolean' }).notNull().default(false),
 		originalEdition: integer('original_edition', { mode: 'boolean' }).notNull().default(false),
-		loanedTo: text('loaned_to'),
 		deluxe: integer('deluxe', { mode: 'boolean' }).notNull().default(false),
 		limitedSeries: integer('limited_series', { mode: 'boolean' }).notNull().default(false),
 		digital: integer('digital', { mode: 'boolean' }).notNull().default(false),

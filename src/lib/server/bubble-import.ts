@@ -114,7 +114,6 @@ export async function importBubbleCsv(
 			review: bubbleText(row, "Mon avis de l'album") || null,
 			signed: bubbleChecked(bubbleText(row, 'Dédicacé')),
 			originalEdition: bubbleChecked(bubbleText(row, 'Edition originale')),
-			loanedTo: bubbleText(row, 'Prété à') || bubbleText(row, 'Prêté à') || null,
 			deluxe: bubbleChecked(bubbleText(row, 'Tirage de tête')),
 			limitedSeries: bubbleChecked(bubbleText(row, 'Série limitée')),
 			digital: bubbleChecked(bubbleText(row, 'Version numérique')),

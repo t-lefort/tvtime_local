@@ -38,3 +38,12 @@ body {
 		Roboto,
 		sans-serif;
 }
+
+/* Masque la scrollbar des rangées de puces qui défilent horizontalement.
+   Tailwind ne fournit pas cet utilitaire : les listes le référencent toutes. */
+@utility scrollbar-none {
+	scrollbar-width: none;
+	&::-webkit-scrollbar {
+		display: none;
+	}
+}

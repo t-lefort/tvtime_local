@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
 import { books, bookSeries, userBooks, userBookSeries, type Book } from './db/schema';
-import type { BookMetadata } from './book-metadata';
+import { getBookByInventaireWork, getBookByIsbn, type BookMetadata } from './book-metadata';
 
 export interface StoreBookOptions {
 	seriesType?: string | null;
@@ -22,7 +22,6 @@ export interface CollectBookOptions {
 	review?: string | null;
 	signed?: boolean;
 	originalEdition?: boolean;
-	loanedTo?: string | null;
 	deluxe?: boolean;
 	limitedSeries?: boolean;
 	digital?: boolean;
@@ -145,7 +144,6 @@ export function collectBook(userId: number, book: Book, opts: CollectBookOptions
 		review: opts.review ?? null,
 		signed: opts.signed ?? false,
 		originalEdition: opts.originalEdition ?? false,
-		loanedTo: opts.loanedTo ?? null,
 		deluxe: opts.deluxe ?? false,
 		limitedSeries: opts.limitedSeries ?? false,
 		digital: opts.digital ?? false,
@@ -167,7 +165,6 @@ export function collectBook(userId: number, book: Book, opts: CollectBookOptions
 		if (opts.review !== undefined) updates.review = opts.review;
 		if (opts.signed !== undefined) updates.signed = opts.signed;
 		if (opts.originalEdition !== undefined) updates.originalEdition = opts.originalEdition;
-		if (opts.loanedTo !== undefined) updates.loanedTo = opts.loanedTo;
 		if (opts.deluxe !== undefined) updates.deluxe = opts.deluxe;
 		if (opts.limitedSeries !== undefined) updates.limitedSeries = opts.limitedSeries;
 		if (opts.digital !== undefined) updates.digital = opts.digital;
@@ -218,7 +215,6 @@ export interface BookWithUser extends Book {
 	review: string | null;
 	signed: boolean;
 	originalEdition: boolean;
-	loanedTo: string | null;
 	deluxe: boolean;
 	limitedSeries: boolean;
 	digital: boolean;
@@ -226,6 +222,53 @@ export interface BookWithUser extends Book {
 	purchasePrice: number | null;
 	estimatedValue: number | null;
 	condition: string | null;
+}
+
+/**
+ * Ajoute au profil l'edition designee par un resultat de recherche
+ * bibliographique (`isbn:...` ou URI d'oeuvre Inventaire). Partage par la
+ * recherche generale et par la page d'ajout de livre.
+ */
+export async function collectBookFromSource(userId: number, sourceId: string): Promise<Book | null> {
+	const metadata = sourceId.startsWith('isbn:')
+		? await getBookByIsbn(sourceId.slice(5))
+		: await getBookByInventaireWork(sourceId);
+	if (!metadata) return null;
+	const book = addOrUpdateBook(metadata);
+	collectBook(userId, book);
+	return book;
+}
+
+/**
+ * Index des livres deja dans la bibliotheque du profil, pour marquer les
+ * resultats de recherche. L'ISBN et l'identifiant de source sont fiables ;
+ * le titre normalise rattrape les oeuvres Inventaire, dont l'URI de recherche
+ * differe de celle de l'edition stockee.
+ */
+export function collectedBookIds(userId: number): Map<string, number> {
+	const rows = db
+		.select({
+			id: books.id,
+			isbn13: books.isbn13,
+			externalId: books.externalId,
+			title: books.title
+		})
+		.from(userBooks)
+		.innerJoin(books, eq(books.id, userBooks.bookId))
+		.where(eq(userBooks.userId, userId))
+		.all();
+	const index = new Map<string, number>();
+	for (const row of rows) {
+		if (row.isbn13) index.set(`isbn:${row.isbn13}`, row.id);
+		if (row.externalId) index.set(row.externalId, row.id);
+		index.set(bookTitleKey(row.title), row.id);
+	}
+	return index;
+}
+
+/** Cle de rapprochement d'un livre par son titre, insensible a la casse. */
+export function bookTitleKey(title: string): string {
+	return `title:${normalizeTitle(title).toLocaleLowerCase('fr')}`;
 }
 
 export function getBooksForUser(userId: number): BookWithUser[] {
@@ -239,7 +282,7 @@ export function getBooksForUser(userId: number): BookWithUser[] {
 			bs.title AS seriesTitle, bs.type AS seriesType, bs.category,
 			ub.added_at AS addedAt, ub.in_collection AS inCollection, ub.wishlist,
 			ub.reading_status AS readingStatus, ub.favorite, ub.rating, ub.review,
-			ub.signed, ub.original_edition AS originalEdition, ub.loaned_to AS loanedTo,
+			ub.signed, ub.original_edition AS originalEdition,
 			ub.deluxe, ub.limited_series AS limitedSeries, ub.digital, ub.for_sale AS forSale,
 			ub.purchase_price AS purchasePrice, ub.estimated_value AS estimatedValue,
 			ub.condition

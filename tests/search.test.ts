@@ -8,16 +8,19 @@ import {
 } from '../src/lib/search';
 
 const result = (
-	kind: 'series' | 'films',
+	kind: 'series' | 'films' | 'livres',
 	tmdbId: number,
 	popularity: number
 ): SearchResult => ({
 	kind,
-	tmdbId,
+	key: `${kind}:${tmdbId}`,
+	tmdbId: kind === 'livres' ? null : tmdbId,
+	sourceId: kind === 'livres' ? `inv:${tmdbId}` : null,
 	name: `${kind} ${tmdbId}`,
 	originalName: `${kind} ${tmdbId}`,
 	overview: '',
 	posterPath: null,
+	coverUrl: null,
 	backdropPath: null,
 	date: null,
 	voteAverage: 0,
@@ -28,6 +31,7 @@ const result = (
 test('parseSearchType retombe sur « tout » hors valeurs connues', () => {
 	assert.equal(parseSearchType('films'), 'films');
 	assert.equal(parseSearchType('series'), 'series');
+	assert.equal(parseSearchType('livres'), 'livres');
 	assert.equal(parseSearchType('tout'), 'tout');
 	assert.equal(parseSearchType('musique'), 'tout');
 	assert.equal(parseSearchType(null), 'tout');
@@ -39,6 +43,16 @@ test('interleaveResults alterne série et film, le plus populaire en tête', () 
 	assert.deepEqual(
 		interleaveResults(shows, movies).map((r) => `${r.kind}:${r.tmdbId}`),
 		['films:10', 'series:1', 'series:2', 'films:20']
+	);
+});
+
+test('interleaveResults intercale aussi les livres, sans identifiant TMDB', () => {
+	const shows = [result('series', 1, 50)];
+	const movies = [result('films', 10, 90)];
+	const books = [result('livres', 100, 0), result('livres', 200, 0)];
+	assert.deepEqual(
+		interleaveResults(shows, movies, books).map((r) => r.key),
+		['films:10', 'series:1', 'livres:100', 'livres:200']
 	);
 });
 
@@ -61,5 +75,6 @@ test('searchBackHref rouvre l’onglet d’origine, sinon celui de la fiche', ()
 	assert.equal(searchBackHref('dune', 'tout', '/films'), '/recherche?type=tout&q=dune');
 	assert.equal(searchBackHref('dune', null, '/films'), '/recherche?type=films&q=dune');
 	assert.equal(searchBackHref('dune', 'inconnu', '/series'), '/recherche?type=series&q=dune');
+	assert.equal(searchBackHref('dune', null, '/livres'), '/recherche?type=livres&q=dune');
 	assert.equal(searchBackHref('', 'tout', '/series'), '/series');
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `user_books` DROP COLUMN `loaned_to`;

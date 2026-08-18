@@ -2,11 +2,13 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { beforeNavigate, goto } from '$app/navigation';
+	import BookCover from '$lib/components/BookCover.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import { tmdbImg, yearOf } from '$lib/format';
 
-	let { data } = $props();
-	let adding = $state<number | null>(null);
+	let { data, form } = $props();
+	type Result = (typeof data.results)[number];
+	let adding = $state<string | null>(null);
 	let query = $state('');
 	let searching = $state(false);
 	let queuedQuery = $state('');
@@ -20,22 +22,29 @@
 	const people = $derived(data.people ?? []);
 	// Sociétés et personnes ne sont chargées que là où des films sont proposés.
 	const hasSuggestions = $derived(
-		data.type !== 'series' && (companies.length > 0 || people.length > 0)
+		(data.type === 'tout' || data.type === 'films') && (companies.length > 0 || people.length > 0)
 	);
 
 	const TABS = [
 		{ key: 'tout', label: 'Tout' },
 		{ key: 'series', label: 'Séries' },
-		{ key: 'films', label: 'Films' }
+		{ key: 'films', label: 'Films' },
+		{ key: 'livres', label: 'Livres' }
 	] as const;
 
 	const PLACEHOLDERS: Record<string, string> = {
-		tout: 'Rechercher un film ou une série…',
+		tout: 'Rechercher un film, une série ou un livre…',
 		series: 'Rechercher une série…',
-		films: 'Rechercher un film…'
+		films: 'Rechercher un film…',
+		livres: 'Rechercher un livre par titre, auteur ou ISBN…'
 	};
 
-	const isFilm = (result: { kind: 'series' | 'films' }) => result.kind === 'films';
+	const KIND_LABELS = { series: 'Série', films: 'Film', livres: 'Livre' } as const;
+
+	/** Le libellé du bouton d'ajout suit le vocabulaire de chaque catalogue. */
+	const ADD_LABELS = { series: '+ Suivre', films: '+ Ajouter', livres: '+ Ajouter' } as const;
+
+	const ADD_ACTIONS = { series: '?/add', films: '?/addMovie', livres: '?/addBook' } as const;
 
 	beforeNavigate(({ type }) => {
 		// A navigation triggered outside the live search (link, form or browser
@@ -45,7 +54,7 @@
 
 	/** Puces de suggestion : une ligne qui défile sur mobile, repliée dès `sm`. */
 	const SUGGESTION_ROW =
-		'-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0';
+		'scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0';
 
 	const DEPARTMENT_FR: Record<string, string> = {
 		Acting: 'Acteur / Actrice',
@@ -86,7 +95,14 @@
 		return `/recherche?${params}`;
 	}
 
-	function resultHref(result: { tmdbId: number; kind: 'series' | 'films' }): string {
+	function resultHref(result: Result): string {
+		if (result.kind === 'livres') {
+			// Un livre pas encore ajouté n'a pas de fiche : la page d'ajout permet
+			// de choisir l'édition, de scanner l'EAN ou de saisir à la main.
+			return result.localId
+				? `/livres/${result.localId}`
+				: `/livres/ajouter?q=${encodeURIComponent(result.name)}`;
+		}
 		// `type` accompagne la requête pour que le bouton retour rouvre le bon onglet.
 		const params = data.q ? `?${new URLSearchParams({ q: data.q, type: data.type })}` : '';
 		return `/${result.kind}/${result.tmdbId}${params}`;
@@ -136,6 +152,40 @@
 	}
 </script>
 
+<!-- Chaque catalogue a sa propre imagerie : affiche TMDB ou couverture d'édition. -->
+{#snippet cover(result: Result, size: 'w185' | 'w342')}
+	{#if result.kind === 'livres'}
+		<BookCover url={result.coverUrl} alt={result.name} />
+	{:else}
+		<Poster path={result.posterPath} alt={result.name} {size} fallback={result.kind === 'films' ? 'film' : 'TV'} />
+	{/if}
+{/snippet}
+
+<!-- Un seul formulaire d'ajout pour les trois catalogues : seuls l'action, le
+	 champ transmis et le libellé changent. -->
+{#snippet addForm(result: Result, buttonClass: string)}
+	<form
+		method="POST"
+		action={ADD_ACTIONS[result.kind]}
+		use:enhance={() => {
+			adding = result.key;
+			return async ({ update }) => {
+				await update();
+				adding = null;
+			};
+		}}
+	>
+		{#if result.kind === 'livres'}
+			<input type="hidden" name="sourceId" value={result.sourceId} />
+		{:else}
+			<input type="hidden" name="tmdbId" value={result.tmdbId} />
+		{/if}
+		<button disabled={adding !== null} class={buttonClass}>
+			{adding === result.key ? 'Ajout…' : ADD_LABELS[result.kind]}
+		</button>
+	</form>
+{/snippet}
+
 <svelte:head>
 	<title>Recherche — TV Time local</title>
 </svelte:head>
@@ -148,13 +198,13 @@
 <div
 	class="sticky top-0 z-20 -mx-4 mb-3 border-b border-line/60 bg-bg/95 px-4 pt-3 pb-3 backdrop-blur md:-mx-6 md:px-6"
 >
-	<div class="mb-3 flex gap-2">
+	<div class="scrollbar-none mb-3 flex gap-2 overflow-x-auto">
 		{#each TABS as t (t.key)}
 			<a
 				href={searchUrl(t.key, query)}
 				data-sveltekit-replacestate
 				onclick={clearPendingSearch}
-				class="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
+				class="shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors
 					{data.type === t.key ? 'bg-brand text-brand-ink' : 'bg-card text-mut hover:bg-card-hover hover:text-ink'}"
 			>
 				{t.label}
@@ -179,6 +229,10 @@
 		/>
 	</form>
 </div>
+
+{#if form?.error}
+	<p class="mb-3 rounded-xl border border-red-400/30 bg-card p-3 text-sm text-red-300">{form.error}</p>
+{/if}
 
 <div class="mb-5 min-h-5 text-xs text-mut" aria-live="polite">
 	{#if searching}
@@ -261,6 +315,15 @@
 			<div class="relative h-30 bg-card-hover sm:h-36">
 				{#if preview.backdropPath}
 					<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+				{:else if preview.coverUrl}
+					<!-- Un livre n'a pas d'image large : sa couverture floutée tient le décor
+						 pour que la carte garde la même silhouette que films et séries. -->
+					<img
+						src={preview.coverUrl}
+						alt=""
+						referrerpolicy="no-referrer"
+						class="h-full w-full scale-110 object-cover opacity-50 blur-xl"
+					/>
 				{/if}
 				<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
 				<p class="absolute top-3 left-3 rounded-full bg-bg/70 px-2.5 py-1 text-[11px] font-semibold text-brand backdrop-blur">
@@ -270,9 +333,7 @@
 		</a>
 		<div class="relative -mt-12 flex gap-3 p-3.5 pt-0 sm:gap-4">
 			<a href={previewHref} class="w-22 shrink-0 self-start overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 5.5rem">
-				<div class="aspect-[2/3]">
-					<Poster path={preview.posterPath} alt={preview.name} size="w342" fallback={isFilm(preview) ? 'film' : 'TV'} />
-				</div>
+				<div class="aspect-[2/3]">{@render cover(preview, 'w342')}</div>
 			</a>
 			<div class="min-w-0 flex-1 pt-10">
 				<div class="flex flex-wrap items-start gap-x-2 gap-y-1">
@@ -284,7 +345,7 @@
 					{/if}
 				</div>
 				<p class="mt-1 text-sm text-mut">
-					{isFilm(preview) ? 'Film' : 'Série'}
+					{KIND_LABELS[preview.kind]}
 					{#if yearOf(preview.date)} - {yearOf(preview.date)}{/if}
 					{#if ratingLabel(preview.voteAverage)} - TMDB {ratingLabel(preview.voteAverage)}/10{/if}
 				</p>
@@ -299,30 +360,12 @@
 				<div class="mt-3 flex flex-wrap items-center gap-2">
 					{#if preview.localId}
 						<a href={previewHref} class="rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand">
-							Voir dans la bibliotheque
+							Voir dans la bibliothèque
 						</a>
 					{:else}
-						<form
-							method="POST"
-							action={isFilm(preview) ? '?/addMovie' : '?/add'}
-							use:enhance={() => {
-								adding = preview.tmdbId;
-								return async ({ update }) => {
-									await update();
-									adding = null;
-								};
-							}}
-						>
-							<input type="hidden" name="tmdbId" value={preview.tmdbId} />
-							<button
-								disabled={adding !== null}
-								class="rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
-							>
-								{adding === preview.tmdbId ? 'Ajout…' : isFilm(preview) ? '+ Ajouter' : '+ Suivre'}
-							</button>
-						</form>
+						{@render addForm(preview, 'rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50')}
 						<a href={previewHref} class="rounded-full border border-line px-3.5 py-1.5 text-sm font-semibold text-mut hover:border-mut hover:text-ink">
-							Détails
+							{preview.kind === 'livres' ? 'Autres éditions' : 'Détails'}
 						</a>
 					{/if}
 				</div>
@@ -334,11 +377,11 @@
 		<div class="min-w-0">
 		<h2 class="mb-2 text-xs font-semibold tracking-wide text-mut uppercase">Autres résultats</h2>
 		<ul class="space-y-2">
-			{#each otherResults as result (result.tmdbId)}
+			{#each otherResults as result (result.key)}
 				{@const href = resultHref(result)}
 				<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
 					<a href={href} class="h-21 w-14 shrink-0 overflow-hidden rounded-md" style="height: 5.25rem">
-						<Poster path={result.posterPath} alt={result.name} size="w185" fallback={isFilm(result) ? 'film' : 'TV'} />
+						{@render cover(result, 'w185')}
 					</a>
 					<div class="min-w-0 flex-1 py-1">
 						<p class="truncate font-semibold">
@@ -346,8 +389,8 @@
 							{#if yearOf(result.date)}<span class="font-normal text-mut"> ({yearOf(result.date)})</span>{/if}
 						</p>
 						{#if data.type === 'tout'}
-							<!-- L'onglet « Tout » mélange les deux catalogues : on nomme la nature du résultat. -->
-							<p class="text-[11px] font-medium text-mut">{isFilm(result) ? 'Film' : 'Série'}</p>
+							<!-- L'onglet « Tout » mélange les catalogues : on nomme la nature du résultat. -->
+							<p class="text-[11px] font-medium text-mut">{KIND_LABELS[result.kind]}</p>
 						{/if}
 						<p class="truncate text-xs text-mut">
 							{#if result.originalName !== result.name}{result.originalName}{/if}
@@ -364,25 +407,7 @@
 							Voir
 						</a>
 					{:else}
-						<form
-							method="POST"
-							action={isFilm(result) ? '?/addMovie' : '?/add'}
-							use:enhance={() => {
-								adding = result.tmdbId;
-								return async ({ update }) => {
-									await update();
-									adding = null;
-								};
-							}}
-						>
-							<input type="hidden" name="tmdbId" value={result.tmdbId} />
-							<button
-								disabled={adding !== null}
-								class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
-							>
-								{adding === result.tmdbId ? 'Ajout…' : isFilm(result) ? '+ Ajouter' : '+ Suivre'}
-							</button>
-						</form>
+						{@render addForm(result, 'shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50')}
 					{/if}
 				</li>
 			{/each}
@@ -392,11 +417,17 @@
 	</div>
 {:else}
 	<p class="mt-10 text-center text-sm text-mut">
-		Cherchez {data.type === 'films' ? 'un film' : data.type === 'series' ? 'une série' : 'un film ou une série'} pour l'ajouter
-		à votre bibliothèque.
+		Cherchez {data.type === 'films'
+			? 'un film'
+			: data.type === 'series'
+				? 'une série'
+				: data.type === 'livres'
+					? 'un livre'
+					: 'un film, une série ou un livre'} pour l'ajouter à votre bibliothèque.
 	</p>
 {/if}
 
 <p class="mt-8 text-center text-[11px] text-mut/70">
-	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>
+	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>{#if data.type === 'tout' || data.type === 'livres'}, Inventaire, la BnF et Open
+		Library{/if}
 </p>
