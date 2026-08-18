@@ -23,11 +23,14 @@ export function updateListParams(
 		if (opensElsewhere(event)) return false;
 		event.preventDefault();
 	}
-	const url = new URL(page.url);
+	// L'adresse courante se lit dans le navigateur, pas dans `page.url` :
+	// `replaceState` change bien l'URL mais laisse `page.url` sur celle du
+	// dernier chargement, et un tri appliqué après un filtre effacerait le filtre.
+	const url = new URL(location.href);
 	for (const [name, value] of Object.entries(params)) {
 		if (value === null) url.searchParams.delete(name);
 		else url.searchParams.set(name, value);
 	}
-	if (url.href !== page.url.href) replaceState(url, page.state);
+	if (url.href !== location.href) replaceState(url, page.state);
 	return true;
 }

@@ -3,14 +3,15 @@
 Self-hosted web app for tracking TV shows, movies **and books**. It combines a minimalist TV Time replacement with a personal library that can import a Bubble collection.
 
 - **Feed**: **To watch** tab (the next episode of each show, ready to check off) and **Upcoming** tab (upcoming air dates, grouped by date)
-- **Library**: one page shared by the three catalogues (shows, movies, books), with a tab bar to switch between them. It opens on the largest catalogue. Each list has the same text filter, filter chips and sort order (most recent activity or alphabetical)
+- **Library**: one page shared by the three catalogues (shows, movies, books), with a tab bar to switch between them. It opens on the largest catalogue. Each list has the same text filter, filter chips and sort order (most recent activity or alphabetical) — all applied straight in the page, so the list follows every keystroke without a round trip
 - **Shows**: your library with progress bars, filters (watching, up to date, stopped, finished, not started)
 - **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion. The cast shows the main billing, with a **full cast** button that loads every credited actor from TMDB (also on movies)
 - **Movies**: collection with filters (to watch, watched, favorites), mark watched/unwatched, rewatches, favorite
 - **Books**: personal library with owned/wishlist/reading-status filters, the same 1–10 star rating as shows and movies, a review and edition details. Add from the general search, by ISBN, manual entry or EAN-13 camera scan; Bubble CSV exports can be imported from the profile page
+- **Book series**: volumes of the same series share a single library tile and a **series page** that lists every volume in order, like the episodes of a season — what you own, what you have read, and a one-click add for what is missing. Covers are downloaded once and served from `./data/covers/`, so a shelf of a hundred books does not depend on the catalogues answering a hundred times
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **For you**: personalized suggestions of shows and movies, based on your ratings, favorites and watch history — filterable by **streaming platform** (the platforms available in your region, grouped: no "with Ads" or reseller variants). Can be hidden from the profile settings
-- **Search**: add shows and movies via TMDB (French metadata) and books via Inventaire, the BnF, Open Library and Google Books. The default **All** tab searches the three catalogues at once; the **Shows**, **Movies** and **Books** tabs narrow it down
+- **Search**: add shows and movies via TMDB (French metadata) and books via Inventaire, the BnF, Open Library and Google Books. A book series comes back as a single result instead of a handful of its volumes. The default **All** tab searches the three catalogues at once; the **Shows**, **Movies** and **Books** tabs narrow it down
 - **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page)
 - **Profile**: total screen time (shows + movies), watch counts per month, genre breakdown, ranking of watched shows
 
@@ -49,7 +50,7 @@ npm run dev
 docker compose up -d --build
 ```
 
-The app listens on `http://localhost:3000`. The SQLite database is persisted in `./data/`.
+The app listens on `http://localhost:3000` and compresses its own responses (Brotli or gzip), so it can be exposed as is, without a proxy in front. The SQLite database and the book cover cache are persisted in `./data/`.
 
 To import the TV Time GDPR export, use Profile → **Import TV Time** in the app. (The CLI alternative from inside the container: uncomment the `gdpr` volume in `docker-compose.yml`, then `docker compose exec tvtime npx tsx scripts/import-tvtime.ts /gdpr`.)
 
