@@ -3,6 +3,7 @@
 	import BackButton from '$lib/components/BackButton.svelte';
 	import BarcodeScanner from '$lib/components/BarcodeScanner.svelte';
 	import BookCover from '$lib/components/BookCover.svelte';
+	import { bookResultHref } from '$lib/search';
 	let { data, form } = $props();
 	let query = $state('');
 	let manual = $state(false);
@@ -36,8 +37,17 @@
 		{#each data.results as result (result.sourceId)}
 			<li class="flex items-center gap-3 rounded-xl bg-card p-2 pr-3">
 				<div class="h-24 w-16 shrink-0 overflow-hidden rounded-md"><BookCover url={result.coverUrl} alt={result.title} /></div>
-				<div class="min-w-0 flex-1"><p class="font-semibold">{result.title}</p>{#if result.description}<p class="mt-1 line-clamp-2 text-xs text-mut">{result.description}</p>{/if}</div>
-				<form method="POST" action="?/add"><input type="hidden" name="sourceId" value={result.sourceId} /><button class="rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-brand-ink">Ajouter</button></form>
+				<div class="min-w-0 flex-1">
+					<p class="font-semibold">{result.title}</p>
+					{#if result.kind === 'series'}<p class="text-[11px] font-medium text-mut">Série de livres</p>{/if}
+					{#if result.description}<p class="mt-1 line-clamp-2 text-xs text-mut">{result.description}</p>{/if}
+				</div>
+				{#if result.kind === 'series'}
+					<!-- Une série n'est pas une édition : elle ouvre la liste de ses tomes. -->
+					<a href={bookResultHref({ sourceId: result.sourceId, localId: null, name: result.title })} class="shrink-0 rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-brand-ink">Tomes</a>
+				{:else}
+					<form method="POST" action="?/add"><input type="hidden" name="sourceId" value={result.sourceId} /><button class="rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-brand-ink">Ajouter</button></form>
+				{/if}
 			</li>
 		{/each}
 	</ul>

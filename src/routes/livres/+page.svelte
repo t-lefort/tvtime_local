@@ -6,6 +6,7 @@
 	import { matchesQuery, parseQuery } from '$lib/library';
 	import { updateListParams } from '$lib/library-nav';
 	import { DEFAULT_SORT, type SortOrder } from '$lib/sort';
+	import { volumeNumber } from '$lib/books';
 
 	let { data } = $props();
 
@@ -56,6 +57,50 @@
 
 	const books = $derived(matching.filter(chips.find((chip) => chip.key === filter)?.match ?? (() => true)));
 
+	/**
+	 * Une série tient une seule vignette, comme une série télé tient la sienne :
+	 * sinon vingt tomes de la même série remplissent l'écran et cachent le reste
+	 * de la bibliothèque. Un tome esseulé reste affiché pour lui-même.
+	 */
+	type Entry =
+		| { kind: 'book'; key: string; book: Book }
+		| { kind: 'series'; key: string; id: number; title: string; volumes: Book[] };
+
+	const entries: Entry[] = $derived.by(() => {
+		const sizes = new Map<number, number>();
+		for (const book of books) {
+			if (book.seriesId !== null) sizes.set(book.seriesId, (sizes.get(book.seriesId) ?? 0) + 1);
+		}
+		const seen = new Set<number>();
+		const list: Entry[] = [];
+		// Le parcours suit l'ordre déjà choisi : la série prend la place de son
+		// premier tome, qu'on trie par titre ou par date d'ajout.
+		for (const book of books) {
+			const seriesId = book.seriesId;
+			if (seriesId === null || (sizes.get(seriesId) ?? 0) < 2) {
+				list.push({ kind: 'book', key: `book:${book.id}`, book });
+				continue;
+			}
+			if (seen.has(seriesId)) continue;
+			seen.add(seriesId);
+			list.push({
+				kind: 'series',
+				key: `series:${seriesId}`,
+				id: seriesId,
+				title: book.seriesTitle ?? book.title,
+				volumes: books.filter((other) => other.seriesId === seriesId)
+			});
+		}
+		return list;
+	});
+
+	/** Vignette d'une série : son premier tome, à défaut le premier connu. */
+	function seriesCover(volumes: Book[]): Book {
+		return [...volumes].sort(
+			(a, b) => (volumeNumber(a.volume) ?? Infinity) - (volumeNumber(b.volume) ?? Infinity)
+		)[0];
+	}
+
 	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
 		const params = new URLSearchParams();
@@ -105,7 +150,7 @@
 
 <SortToggle base="/livres" bind:sort params={kept} />
 
-{#if books.length === 0}
+{#if entries.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
 		<p class="mb-2 text-3xl">📚</p>
 		{#if q.trim()}
@@ -118,37 +163,63 @@
 	</div>
 {:else}
 	<div class="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
-		{#each books as book (book.id)}
-			<a href="/livres/{book.id}" class="group min-w-0">
-				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
-					<BookCover bookId={book.id} alt={book.title} />
-					{#if book.favorite}
-						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
-					{/if}
-					{#if book.wishlist && !book.inCollection}
-						<span class="absolute top-1.5 left-1.5 rounded bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold text-mut uppercase">Envie</span>
-					{/if}
-					{#if book.readingStatus === 'read'}
-						<!-- Même pastille que les films vus, pour lire l'état d'un coup d'œil -->
-						<span
-							class="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-brand text-brand-ink"
-							title="Lu"
-						>
-							<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M4 12.5l5 5L20 6.5" />
-							</svg>
+		{#each entries as entry (entry.key)}
+			{#if entry.kind === 'series'}
+				{@const cover = seriesCover(entry.volumes)}
+				{@const read = entry.volumes.filter((volume) => volume.readingStatus === 'read').length}
+				<a href="/livres/series/{entry.id}" class="group min-w-0">
+					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
+						<BookCover bookId={cover.id} alt={entry.title} />
+						<!-- Le nombre de tomes tient lieu de vignette empilée : on voit
+							 d'un coup d'œil qu'on a affaire à une série et à son volume. -->
+						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-ink">
+							{entry.volumes.length} tomes
 						</span>
-					{:else if book.readingStatus === 'reading'}
-						<span class="absolute bottom-1.5 left-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-brand">En cours</span>
-					{/if}
-				</div>
-				<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{book.title}</p>
-				<p class="truncate text-xs text-mut">
-					{book.seriesTitle
-						? `${book.seriesTitle}${book.volume ? ` · T. ${book.volume}` : ''}`
-						: book.authors.join(', ')}
-				</p>
-			</a>
+						{#if entry.volumes.some((volume) => volume.favorite)}
+							<span class="absolute top-1.5 left-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
+						{/if}
+						{#if read > 0}
+							<span class="absolute bottom-1.5 left-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-brand">
+								{read}/{entry.volumes.length} lus
+							</span>
+						{/if}
+					</div>
+					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{entry.title}</p>
+					<p class="truncate text-xs text-mut">Série · {entry.volumes.length} tomes</p>
+				</a>
+			{:else}
+				{@const book = entry.book}
+				<a href="/livres/{book.id}" class="group min-w-0">
+					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
+						<BookCover bookId={book.id} alt={book.title} />
+						{#if book.favorite}
+							<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
+						{/if}
+						{#if book.wishlist && !book.inCollection}
+							<span class="absolute top-1.5 left-1.5 rounded bg-bg/80 px-1.5 py-0.5 text-[10px] font-semibold text-mut uppercase">Envie</span>
+						{/if}
+						{#if book.readingStatus === 'read'}
+							<!-- Même pastille que les films vus, pour lire l'état d'un coup d'œil -->
+							<span
+								class="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-brand text-brand-ink"
+								title="Lu"
+							>
+								<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M4 12.5l5 5L20 6.5" />
+								</svg>
+							</span>
+						{:else if book.readingStatus === 'reading'}
+							<span class="absolute bottom-1.5 left-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-brand">En cours</span>
+						{/if}
+					</div>
+					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{book.title}</p>
+					<p class="truncate text-xs text-mut">
+						{book.seriesTitle
+							? `${book.seriesTitle}${book.volume ? ` · T. ${book.volume}` : ''}`
+							: book.authors.join(', ')}
+					</p>
+				</a>
+			{/if}
 		{/each}
 	</div>
 {/if}

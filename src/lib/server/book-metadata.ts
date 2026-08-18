@@ -1,6 +1,13 @@
 import 'dotenv/config';
 import { XMLParser } from 'fast-xml-parser';
 import { isbn13To10, normalizeIsbn } from '$lib/isbn';
+import { BOOK_SERIES_PREFIX, bookSeriesUri } from '$lib/search';
+import {
+	compareVolumes,
+	foldVolumesIntoSeries,
+	splitVolumeTitle,
+	volumeNumber
+} from '$lib/books';
 
 const INVENTAIRE = 'https://inventaire.io/api';
 const BNF = 'https://catalogue.bnf.fr/api/SRU';
@@ -21,12 +28,16 @@ export interface BookMetadata {
 	pageCount: number | null;
 	coverUrl: string | null;
 	seriesTitle: string | null;
+	/** URI de la série chez Inventaire, pour retrouver la liste de ses tomes. */
+	seriesUri: string | null;
 	volume: string | null;
 	source: 'inventaire' | 'bnf' | 'openlibrary' | 'google-books' | 'manual';
 	sourceId: string | null;
 }
 
 export interface BookSearchResult {
+	/** Une série ouvre la liste de ses tomes ; une oeuvre s'ajoute directement. */
+	kind: 'work' | 'series';
 	sourceId: string;
 	title: string;
 	description: string | null;
@@ -150,6 +161,7 @@ async function inventaireEditionToMetadata(edition: Entity): Promise<BookMetadat
 		pageCount: typeof pageValue === 'number' ? pageValue : Number(pageValue) || null,
 		coverUrl: inventaireImage(edition.image?.url ?? work?.image?.url),
 		seriesTitle: seriesUri ? label(related[seriesUri]) : null,
+		seriesUri,
 		volume,
 		source: 'inventaire',
 		sourceId: edition.uri
@@ -192,6 +204,7 @@ async function bnfByIsbn(isbn13: string): Promise<BookMetadata | null> {
 		pageCount: null,
 		coverUrl: null,
 		seriesTitle: null,
+		seriesUri: null,
 		volume: /(?:^|[.\s])([0-9]+)\s*(?:\/|$)/.exec(rawTitle)?.[1] ?? null,
 		source: 'bnf',
 		sourceId: ark
@@ -219,6 +232,7 @@ async function openLibraryByIsbn(isbn13: string): Promise<BookMetadata | null> {
 		pageCount: doc.number_of_pages_median ?? null,
 		coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
 		seriesTitle: null,
+		seriesUri: null,
 		volume: null,
 		source: 'openlibrary',
 		sourceId: doc.edition_key?.[0] ?? doc.key ?? null
@@ -263,6 +277,7 @@ async function googleByIsbn(isbn13: string): Promise<BookMetadata | null> {
 		pageCount: info.pageCount ?? null,
 		coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/, 'https:') ?? null,
 		seriesTitle: null,
+		seriesUri: null,
 		volume: null,
 		source: 'google-books',
 		sourceId: item.id
@@ -283,6 +298,7 @@ function mergeMetadata(primary: BookMetadata, extra: BookMetadata): BookMetadata
 		pageCount: primary.pageCount ?? extra.pageCount,
 		coverUrl: primary.coverUrl ?? extra.coverUrl,
 		seriesTitle: primary.seriesTitle ?? extra.seriesTitle,
+		seriesUri: primary.seriesUri ?? extra.seriesUri,
 		volume: primary.volume ?? extra.volume
 	};
 }
@@ -311,6 +327,34 @@ export async function getBookByIsbn(rawIsbn: string): Promise<BookMetadata | nul
 	return result;
 }
 
+interface InventaireHit {
+	uri: string;
+	label: string;
+	description?: string;
+	image?: string;
+	type: string;
+}
+
+async function searchInventaire(q: string, types: 'works' | 'series', limit: number): Promise<InventaireHit[]> {
+	const url = new URL(`${INVENTAIRE}/search`);
+	url.searchParams.set('search', q);
+	url.searchParams.set('types', types);
+	url.searchParams.set('lang', 'fr');
+	url.searchParams.set('limit', String(limit));
+	const response = await getJson<{ results?: InventaireHit[] }>(url);
+	return response.results ?? [];
+}
+
+function hitToResult(hit: InventaireHit, kind: 'work' | 'series'): BookSearchResult {
+	return {
+		kind,
+		sourceId: kind === 'series' ? `${BOOK_SERIES_PREFIX}${hit.uri}` : hit.uri,
+		title: hit.label,
+		description: hit.description ?? null,
+		coverUrl: inventaireImage(hit.image)
+	};
+}
+
 export async function searchBooks(query: string): Promise<BookSearchResult[]> {
 	const q = query.trim();
 	if (!q) return [];
@@ -318,23 +362,29 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
 	if (isbn) {
 		const book = await getBookByIsbn(isbn);
 		return book
-			? [{ sourceId: `isbn:${isbn}`, title: book.title, description: book.description, coverUrl: book.coverUrl }]
+			? [
+					{
+						kind: 'work',
+						sourceId: `isbn:${isbn}`,
+						title: book.title,
+						description: book.description,
+						coverUrl: book.coverUrl
+					}
+				]
 			: [];
 	}
-	const url = new URL(`${INVENTAIRE}/search`);
-	url.searchParams.set('search', q);
-	url.searchParams.set('types', 'works');
-	url.searchParams.set('lang', 'fr');
-	url.searchParams.set('limit', '20');
-	const response = await getJson<{
-		results?: { uri: string; label: string; description?: string; image?: string; type: string }[];
-	}>(url);
-	return (response.results ?? []).map((result) => ({
-		sourceId: result.uri,
-		title: result.label,
-		description: result.description ?? null,
-		coverUrl: inventaireImage(result.image)
-	}));
+	// Les series sont interrogees en meme temps que les oeuvres : sans elles,
+	// chercher un manga ne renvoie qu'une poignee de tomes en desordre au lieu
+	// de l'entree qui mene a la liste complete.
+	const [works, series] = await Promise.all([
+		searchInventaire(q, 'works', 20),
+		searchInventaire(q, 'series', 10).catch(() => [] as InventaireHit[])
+	]);
+	const folded = foldVolumesIntoSeries(series, works);
+	return [
+		...folded.series.map((hit) => hitToResult(hit, 'series')),
+		...folded.works.map((hit) => hitToResult(hit, 'work'))
+	];
 }
 
 /** Choisit une edition d'une oeuvre trouvee par la recherche plein texte. */
@@ -348,4 +398,97 @@ export async function getBookByInventaireWork(workUri: string): Promise<BookMeta
 	const candidates = Object.values(editions).filter((entity) => normalizeIsbn(firstString(entity, 'wdt:P212') ?? ''));
 	const edition = candidates.find((entity) => entity.originalLang === 'fr') ?? candidates[0];
 	return edition ? inventaireEditionToMetadata(edition) : null;
+}
+
+/** Une serie du catalogue, telle qu'elle s'affiche en tete de sa page. */
+export interface BookSeriesInfo {
+	uri: string;
+	title: string;
+	description: string | null;
+}
+
+/** Un tome de serie, avant tout ajout a la bibliotheque. */
+export interface BookSeriesVolume {
+	uri: string;
+	title: string;
+	volume: number | null;
+	date: string | null;
+}
+
+function isInventaireUri(uri: string): boolean {
+	return /^(?:inv|wd):[A-Za-z0-9]+$/.test(uri);
+}
+
+/** Reconnait l'identifiant de serie porte par un resultat de recherche. */
+export function seriesUriFromSourceId(sourceId: string): string | null {
+	const uri = bookSeriesUri(sourceId);
+	return uri && isInventaireUri(uri) ? uri : null;
+}
+
+/**
+ * Une serie et ses tomes ne bougent pas d'une consultation a l'autre : les
+ * garder une heure en memoire evite d'attendre Inventaire a chaque affichage.
+ */
+const SERIES_TTL_MS = 60 * 60 * 1000;
+const seriesCache = new Map<string, { at: number; value: unknown }>();
+
+async function cachedSeriesCall<T>(key: string, load: () => Promise<T>): Promise<T> {
+	const hit = seriesCache.get(key);
+	if (hit && Date.now() - hit.at < SERIES_TTL_MS) return hit.value as T;
+	const value = await load();
+	seriesCache.set(key, { at: Date.now(), value });
+	return value;
+}
+
+export async function getBookSeries(uri: string): Promise<BookSeriesInfo | null> {
+	if (!isInventaireUri(uri)) return null;
+	return cachedSeriesCall(`serie:${uri}`, async () => {
+		const entity = (await inventaireEntities([uri]))[uri];
+		if (!entity) return null;
+		return {
+			uri,
+			title: label(entity) ?? 'Serie sans titre',
+			description: entity.descriptions?.fr ?? entity.descriptions?.en ?? null
+		};
+	});
+}
+
+/** Combien de tomes on accepte de detailler, et par paquets de combien. */
+const MAX_SERIES_PARTS = 400;
+const ENTITY_CHUNK = 50;
+
+/**
+ * Les tomes d'une serie, dans l'ordre. Wikidata et Inventaire decrivent
+ * souvent le meme tome chacun de son cote : on n'en garde qu'un par numero,
+ * en preferant celui qui porte un titre en francais.
+ */
+export async function getBookSeriesVolumes(uri: string): Promise<BookSeriesVolume[]> {
+	if (!isInventaireUri(uri)) return [];
+	return cachedSeriesCall(`parts:${uri}`, async () => {
+		const url = new URL(`${INVENTAIRE}/entities/serie-parts`);
+		url.searchParams.set('uri', uri);
+		const { parts = [] } = await getJson<{ parts?: { uri: string; ordinal?: string; date?: string }[] }>(url);
+		const kept = parts.slice(0, MAX_SERIES_PARTS);
+		const entities: Record<string, Entity> = {};
+		for (let index = 0; index < kept.length; index += ENTITY_CHUNK) {
+			Object.assign(entities, await inventaireEntities(kept.slice(index, index + ENTITY_CHUNK).map((part) => part.uri)));
+		}
+		const byOrdinal = new Map<string, BookSeriesVolume & { french: boolean }>();
+		for (const part of kept) {
+			const entity = entities[part.uri];
+			const title = firstString(entity, 'wdt:P1476') ?? label(entity);
+			if (!title) continue;
+			// Le numero prime sur l'URI comme cle de regroupement : Wikidata donne
+			// souvent l'ordre, Inventaire seulement un titre numerote.
+			const volume = volumeNumber(part.ordinal) ?? splitVolumeTitle(title).volume;
+			const key = volume !== null ? `t${volume}` : part.uri;
+			const french = Boolean(entity?.labels?.fr);
+			const existing = byOrdinal.get(key);
+			if (existing && (existing.french || !french)) continue;
+			byOrdinal.set(key, { uri: part.uri, title, volume, date: part.date ?? null, french });
+		}
+		return [...byOrdinal.values()]
+			.map(({ french: _french, ...volume }) => volume)
+			.sort(compareVolumes);
+	});
 }

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+	bookResultHref,
+	bookSeriesUri,
 	interleaveResults,
 	parseSearchType,
 	searchBackHref,
@@ -77,4 +79,25 @@ test('searchBackHref rouvre l’onglet d’origine, sinon celui de la fiche', ()
 	assert.equal(searchBackHref('dune', 'inconnu', '/series'), '/recherche?type=series&q=dune');
 	assert.equal(searchBackHref('dune', null, '/livres'), '/recherche?type=livres&q=dune');
 	assert.equal(searchBackHref('', 'tout', '/series'), '/series');
+});
+
+test('bookSeriesUri reconnaît une série parmi les résultats de recherche', () => {
+	assert.equal(bookSeriesUri('serie:wd:Q28667972'), 'wd:Q28667972');
+	assert.equal(bookSeriesUri('inv:857ab8cf'), null);
+	assert.equal(bookSeriesUri(null), null);
+});
+
+test('bookResultHref mène à la série, à la fiche locale, sinon au catalogue', () => {
+	const book = (sourceId: string | null, localId: number | null = null) => ({
+		sourceId,
+		localId,
+		name: 'One Piece, tome 2'
+	});
+	assert.equal(bookResultHref(book('serie:wd:Q28667972')), '/livres/series/wd%3AQ28667972');
+	// La série passe avant tout : elle ne dépend pas d'un tome déjà possédé.
+	assert.equal(bookResultHref(book('serie:wd:Q28667972', 7)), '/livres/series/wd%3AQ28667972');
+	assert.equal(bookResultHref(book('inv:546e0caa', 7)), '/livres/7');
+	assert.equal(bookResultHref(book('inv:546e0caa')), '/livres/oeuvre/inv%3A546e0caa');
+	assert.equal(bookResultHref(book('isbn:9782723427371')), '/livres/ajouter?q=One%20Piece%2C%20tome%202');
+	assert.equal(bookResultHref(book(null)), '/livres/ajouter?q=One%20Piece%2C%20tome%202');
 });

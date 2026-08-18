@@ -5,6 +5,7 @@
 	import BookCover from '$lib/components/BookCover.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import { tmdbImg, yearOf } from '$lib/format';
+	import { bookResultHref, bookSeriesUri } from '$lib/search';
 
 	let { data, form } = $props();
 	type Result = (typeof data.results)[number];
@@ -40,6 +41,15 @@
 	};
 
 	const KIND_LABELS = { series: 'Série', films: 'Film', livres: 'Livre' } as const;
+
+	/** Une série de livres n'a pas de fiche à ajouter : elle mène à ses tomes. */
+	function seriesOfBooks(result: Result): boolean {
+		return result.kind === 'livres' && Boolean(bookSeriesUri(result.sourceId));
+	}
+
+	function kindLabel(result: Result): string {
+		return seriesOfBooks(result) ? 'Série de livres' : KIND_LABELS[result.kind];
+	}
 
 	/** Le libellé du bouton d'ajout suit le vocabulaire de chaque catalogue. */
 	const ADD_LABELS = { series: '+ Suivre', films: '+ Ajouter', livres: '+ Ajouter' } as const;
@@ -96,13 +106,7 @@
 	}
 
 	function resultHref(result: Result): string {
-		if (result.kind === 'livres') {
-			// Un livre pas encore ajouté n'a pas de fiche : la page d'ajout permet
-			// de choisir l'édition, de scanner l'EAN ou de saisir à la main.
-			return result.localId
-				? `/livres/${result.localId}`
-				: `/livres/ajouter?q=${encodeURIComponent(result.name)}`;
-		}
+		if (result.kind === 'livres') return bookResultHref(result);
 		// `type` accompagne la requête pour que le bouton retour rouvre le bon onglet.
 		const params = data.q ? `?${new URLSearchParams({ q: data.q, type: data.type })}` : '';
 		return `/${result.kind}/${result.tmdbId}${params}`;
@@ -345,7 +349,7 @@
 					{/if}
 				</div>
 				<p class="mt-1 text-sm text-mut">
-					{KIND_LABELS[preview.kind]}
+					{kindLabel(preview)}
 					{#if yearOf(preview.date)} - {yearOf(preview.date)}{/if}
 					{#if ratingLabel(preview.voteAverage)} - TMDB {ratingLabel(preview.voteAverage)}/10{/if}
 				</p>
@@ -362,10 +366,14 @@
 						<a href={previewHref} class="rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand">
 							Voir dans la bibliothèque
 						</a>
+					{:else if seriesOfBooks(preview)}
+						<a href={previewHref} class="rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90">
+							Voir les tomes
+						</a>
 					{:else}
 						{@render addForm(preview, 'rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50')}
 						<a href={previewHref} class="rounded-full border border-line px-3.5 py-1.5 text-sm font-semibold text-mut hover:border-mut hover:text-ink">
-							{preview.kind === 'livres' ? 'Autres éditions' : 'Détails'}
+							Détails
 						</a>
 					{/if}
 				</div>
@@ -390,7 +398,7 @@
 						</p>
 						{#if data.type === 'tout'}
 							<!-- L'onglet « Tout » mélange les catalogues : on nomme la nature du résultat. -->
-							<p class="text-[11px] font-medium text-mut">{KIND_LABELS[result.kind]}</p>
+							<p class="text-[11px] font-medium text-mut">{kindLabel(result)}</p>
 						{/if}
 						<p class="truncate text-xs text-mut">
 							{#if result.originalName !== result.name}{result.originalName}{/if}
@@ -405,6 +413,10 @@
 					{#if result.localId}
 						<a href={href} class="shrink-0 rounded-full border border-brand px-3.5 py-1.5 text-sm font-semibold text-brand">
 							Voir
+						</a>
+					{:else if seriesOfBooks(result)}
+						<a href={href} class="shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90">
+							Tomes
 						</a>
 					{:else}
 						{@render addForm(result, 'shrink-0 rounded-full bg-brand px-3.5 py-1.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50')}

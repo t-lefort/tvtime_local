@@ -60,3 +60,30 @@ export function interleaveResults(...lists: SearchResult[][]): SearchResult[] {
 	ranked.sort((a, b) => a.rank - b.rank || b.result.popularity - a.result.popularity);
 	return ranked.slice(0, MAX_MIXED_RESULTS).map((entry) => entry.result);
 }
+
+/**
+ * Prefixe d'un resultat de recherche qui designe une serie de livres entiere
+ * plutot qu'un tome : « serie:wd:Q28667972 ».
+ */
+export const BOOK_SERIES_PREFIX = 'serie:';
+
+/** URI de la serie designee par un resultat de recherche, si c'en est une. */
+export function bookSeriesUri(sourceId: string | null | undefined): string | null {
+	return sourceId?.startsWith(BOOK_SERIES_PREFIX) ? sourceId.slice(BOOK_SERIES_PREFIX.length) : null;
+}
+
+/**
+ * Ou mene un resultat de recherche « livre ». Une serie ouvre la liste
+ * ordonnee de ses tomes ; un tome deja possede ouvre sa fiche de
+ * bibliotheque, sinon celle du catalogue. Une edition trouvee par ISBN n'a
+ * pas de fiche : elle passe par la page d'ajout, qui sait la retrouver.
+ */
+export function bookResultHref(result: Pick<SearchResult, 'sourceId' | 'localId' | 'name'>): string {
+	const seriesUri = bookSeriesUri(result.sourceId);
+	if (seriesUri) return `/livres/series/${encodeURIComponent(seriesUri)}`;
+	if (result.localId) return `/livres/${result.localId}`;
+	if (result.sourceId && /^(?:inv|wd):/.test(result.sourceId)) {
+		return `/livres/oeuvre/${encodeURIComponent(result.sourceId)}`;
+	}
+	return `/livres/ajouter?q=${encodeURIComponent(result.name)}`;
+}

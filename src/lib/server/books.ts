@@ -1,7 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from './db';
-import { books, bookSeries, userBooks, userBookSeries, type Book } from './db/schema';
-import { getBookByInventaireWork, getBookByIsbn, type BookMetadata } from './book-metadata';
+import { books, bookSeries, userBooks, userBookSeries, type Book, type BookSeries } from './db/schema';
+import {
+	getBookByInventaireWork,
+	getBookByIsbn,
+	seriesUriFromSourceId,
+	type BookMetadata
+} from './book-metadata';
 
 export interface StoreBookOptions {
 	seriesType?: string | null;
@@ -54,17 +59,21 @@ function findOrCreateSeries(metadata: BookMetadata, opts: StoreBookOptions): num
 				collection: opts.collection ?? null,
 				category: opts.category ?? null,
 				externalSource: metadata.source,
-				externalId: null,
+				// L'URI du catalogue permet ensuite de retrouver la liste
+				// complete et ordonnee des tomes de la serie.
+				externalId: metadata.seriesUri,
 				lastSyncedAt: sql`(datetime('now'))` as unknown as string
 			})
 			.returning()
 			.get();
-	} else if (opts.seriesType || opts.collection || opts.category) {
+	} else if (opts.seriesType || opts.collection || opts.category || (metadata.seriesUri && !series.externalId)) {
 		db.update(bookSeries)
 			.set({
 				type: opts.seriesType ?? series.type,
 				collection: opts.collection ?? series.collection,
-				category: opts.category ?? series.category
+				category: opts.category ?? series.category,
+				externalSource: series.externalId ? series.externalSource : metadata.source,
+				externalId: series.externalId ?? metadata.seriesUri
 			})
 			.where(eq(bookSeries.id, series.id))
 			.run();
@@ -230,6 +239,8 @@ export interface BookWithUser extends Book {
  * recherche generale et par la page d'ajout de livre.
  */
 export async function collectBookFromSource(userId: number, sourceId: string): Promise<Book | null> {
+	// Une serie n'est pas une edition : elle s'ouvre, ses tomes s'ajoutent.
+	if (seriesUriFromSourceId(sourceId)) return null;
 	const metadata = sourceId.startsWith('isbn:')
 		? await getBookByIsbn(sourceId.slice(5))
 		: await getBookByInventaireWork(sourceId);
@@ -331,4 +342,19 @@ export function removeUserBook(userId: number, bookId: number): void {
 		`);
 		db.run(sql`DELETE FROM book_series WHERE id = ${book.seriesId} AND NOT EXISTS (SELECT 1 FROM books WHERE series_id = ${book.seriesId})`);
 	}
+}
+
+/**
+ * Une serie de la bibliotheque du profil et les tomes qu'il en possede.
+ * Absente si la serie n'existe pas ou si le profil n'en a aucun tome : une
+ * serie n'a d'existence, pour un profil, qu'a travers ses tomes.
+ */
+export function getUserBookSeries(
+	userId: number,
+	seriesId: number
+): { series: BookSeries; books: BookWithUser[] } | undefined {
+	const series = db.select().from(bookSeries).where(eq(bookSeries.id, seriesId)).get();
+	if (!series) return undefined;
+	const owned = getBooksForUser(userId).filter((book) => book.seriesId === seriesId);
+	return owned.length ? { series, books: owned } : undefined;
 }

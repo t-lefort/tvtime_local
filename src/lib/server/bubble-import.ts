@@ -59,6 +59,7 @@ function mergeRow(row: BubbleRow, remote: BookMetadata | null, isbn13: string | 
 		pageCount: remote?.pageCount ?? null,
 		coverUrl: remote?.coverUrl ?? null,
 		seriesTitle: seriesTitle || remote?.seriesTitle || null,
+		seriesUri: remote?.seriesUri ?? null,
 		volume: bubbleText(row, 'Tome') || remote?.volume || null,
 		source: remote?.source ?? 'manual',
 		sourceId: remote?.sourceId ?? null
