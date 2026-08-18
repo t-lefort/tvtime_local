@@ -40,7 +40,7 @@
 
 <div class="flex items-end gap-4">
 	<div class="w-27 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-line" style="width: 6.75rem">
-		<div class="aspect-[2/3]"><BookCover url={book.coverUrl} alt={book.title} /></div>
+		<div class="aspect-[2/3]"><BookCover bookId={book.id} alt={book.title} /></div>
 	</div>
 	<div class="min-w-0 flex-1 pb-1">
 		<h1 class="text-xl leading-tight font-bold">{book.title}</h1>

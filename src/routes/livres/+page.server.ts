@@ -16,7 +16,6 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		title: book.title,
 		authors: JSON.parse(book.authors) as string[],
 		publisher: book.publisher,
-		coverUrl: book.coverUrl,
 		volume: book.volume,
 		addedAt: book.addedAt,
 		inCollection: book.inCollection,

@@ -121,7 +121,7 @@
 		{#each books as book (book.id)}
 			<a href="/livres/{book.id}" class="group min-w-0">
 				<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
-					<BookCover url={book.coverUrl} alt={book.title} />
+					<BookCover bookId={book.id} alt={book.title} />
 					{#if book.favorite}
 						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
 					{/if}
