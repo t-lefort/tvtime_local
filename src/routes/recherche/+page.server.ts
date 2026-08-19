@@ -10,8 +10,15 @@ import {
 	type TmdbMovieSummary,
 	type TmdbShowSummary
 } from '$lib/server/tmdb';
-import { searchBooks, type BookSearchResult } from '$lib/server/book-metadata';
-import { bookTitleKey, collectBookFromSource, collectedBookIds } from '$lib/server/books';
+import { searchBooks, type BookMetadata, type BookSearchResult } from '$lib/server/book-metadata';
+import { isbn13To10, normalizeIsbn } from '$lib/isbn';
+import {
+	addOrUpdateBook,
+	bookTitleKey,
+	collectBook,
+	collectBookFromSource,
+	collectedBookIds
+} from '$lib/server/books';
 import { addOrUpdateShow, followShow } from '$lib/server/shows';
 import { addOrUpdateMovie, collectMovie } from '$lib/server/movies';
 import { requireUser } from '$lib/server/users';
@@ -211,9 +218,52 @@ export const actions: Actions = {
 		} catch {
 			return fail(502, { error: 'Impossible de récupérer cette édition.' });
 		}
-		// Une œuvre sans édition exploitable se rattrape sur la page d'ajout,
-		// qui propose le scan et la saisie manuelle.
-		if (!book) redirect(303, '/livres/ajouter');
+		// Une œuvre sans édition exploitable se rattrape par la saisie manuelle,
+		// proposée juste en dessous des résultats.
+		if (!book) {
+			return fail(404, {
+				error: 'Aucune édition exploitable pour ce titre. Utilisez la saisie manuelle.'
+			});
+		}
+		redirect(303, `/livres/${book.id}`);
+	},
+
+	/**
+	 * Dernier recours quand aucun catalogue ne connaît le livre : le profil
+	 * décrit lui-même son exemplaire. Vivait sur une page d'ajout séparée, que
+	 * plus rien ne justifiait de garder à l'écart de la recherche.
+	 */
+	addManual: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const data = await request.formData();
+		const title = String(data.get('title') ?? '').trim();
+		if (!title) return fail(400, { error: 'Le titre est obligatoire.' });
+		const rawIsbn = String(data.get('isbn') ?? '').trim();
+		const isbn13 = rawIsbn ? normalizeIsbn(rawIsbn) : null;
+		if (rawIsbn && !isbn13) return fail(400, { error: 'ISBN invalide.' });
+		const metadata: BookMetadata = {
+			isbn13,
+			isbn10: isbn13 ? isbn13To10(isbn13) : null,
+			title,
+			subtitle: null,
+			authors: String(data.get('authors') ?? '')
+				.split(',')
+				.map((value) => value.trim())
+				.filter(Boolean),
+			description: null,
+			publisher: String(data.get('publisher') ?? '').trim() || null,
+			publishDate: String(data.get('publishDate') ?? '').trim() || null,
+			language: 'fr',
+			pageCount: null,
+			coverUrl: null,
+			seriesTitle: String(data.get('seriesTitle') ?? '').trim() || null,
+			seriesUri: null,
+			volume: String(data.get('volume') ?? '').trim() || null,
+			source: 'manual',
+			sourceId: null
+		};
+		const book = addOrUpdateBook(metadata);
+		collectBook(user.id, book);
 		redirect(303, `/livres/${book.id}`);
 	}
 };

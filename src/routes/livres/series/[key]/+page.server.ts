@@ -1,127 +1,64 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import {
-	getBookSeries,
-	getBookSeriesVolumes,
-	type BookSeriesVolume
-} from '$lib/server/book-metadata';
-import { collectBookFromSource, getBooksForUser, getUserBookSeries } from '$lib/server/books';
+	buildSeriesVolumes,
+	getSeriesVolumes,
+	ownedOrdinal,
+	pendingEnrichment,
+	prepareSeries,
+	refreshSeries,
+	resolveSeries
+} from '$lib/server/book-series';
 import {
-	compareVolumes,
-	normalizeBookTitle,
-	splitVolumeTitle,
-	volumeNumber
-} from '$lib/books';
+	collectBookFromSource,
+	getBooksForUser,
+	getUserSeriesState,
+	updateUserBook,
+	updateUserSeries
+} from '$lib/server/books';
 import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
-/**
- * Un tome tel qu'il s'affiche : soit un livre du profil, soit une entrée du
- * catalogue qu'il ne possède pas encore, soit les deux rapprochés.
- */
-export interface SeriesVolumeView {
-	key: string;
-	title: string;
-	volume: number | null;
-	date: string | null;
-	/** Œuvre du catalogue, pour ouvrir sa fiche et l'ajouter. */
-	uri: string | null;
-	/** Livre du profil, pour ouvrir sa fiche de bibliothèque. */
-	bookId: number | null;
-	readingStatus: string | null;
-	inCollection: boolean;
-	favorite: boolean;
-}
-
-type OwnedBook = ReturnType<typeof getBooksForUser>[number];
-
-function ownedView(book: OwnedBook): SeriesVolumeView {
-	return {
-		key: `book:${book.id}`,
-		title: book.title,
-		volume: volumeNumber(book.volume) ?? splitVolumeTitle(book.title).volume,
-		date: book.publishDate,
-		uri: null,
-		bookId: book.id,
-		readingStatus: book.readingStatus,
-		inCollection: book.inCollection,
-		favorite: book.favorite
-	};
-}
-
-/**
- * Rapproche les tomes du catalogue et ceux du profil par leur numéro : la
- * liste garde l'ordre de la série, chaque tome dit s'il est déjà là ou non.
- */
-function mergeVolumes(catalogue: BookSeriesVolume[], owned: OwnedBook[]): SeriesVolumeView[] {
-	const remaining = owned.map(ownedView);
-	const merged = catalogue.map((volume) => {
-		const index = remaining.findIndex((view) => view.volume !== null && view.volume === volume.volume);
-		const own = index >= 0 ? remaining.splice(index, 1)[0] : null;
-		return {
-			...(own ?? {
-				key: `work:${volume.uri}`,
-				bookId: null,
-				readingStatus: null,
-				inCollection: false,
-				favorite: false
-			}),
-			key: own ? own.key : `work:${volume.uri}`,
-			// Le catalogue nomme et ordonne ; le profil dit ce qu'il en a.
-			title: own?.title ?? volume.title,
-			volume: volume.volume ?? own?.volume ?? null,
-			date: volume.date ?? own?.date ?? null,
-			uri: volume.uri
-		};
-	});
-	// Les tomes possédés qu'aucun numéro ne rattache au catalogue restent listés.
-	return [...merged, ...remaining.sort(compareVolumes)];
-}
-
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const user = requireUser(locals);
-	const localId = /^\d+$/.test(params.key) ? Number(params.key) : null;
+	const found = await resolveSeries(params.key).catch(() => undefined);
+	if (!found) error(404, 'Série introuvable');
+	const series = await prepareSeries(found);
 
-	let title: string;
-	let description: string | null = null;
-	let uri: string | null = null;
-	let owned: OwnedBook[];
-
-	if (localId) {
-		const local = getUserBookSeries(user.id, localId);
-		if (!local) error(404, 'Série introuvable');
-		title = local.series.title;
-		uri = local.series.externalId;
-		owned = local.books;
-	} else {
-		const series = await getBookSeries(params.key).catch(() => null);
-		if (!series) error(404, 'Série introuvable');
-		title = series.title;
-		description = series.description;
-		uri = series.uri;
-		// Les tomes déjà achetés sont rangés sous une série locale du même nom.
-		const wanted = normalizeBookTitle(title);
-		owned = getBooksForUser(user.id).filter(
-			(book) => book.seriesTitle && normalizeBookTitle(book.seriesTitle) === wanted
-		);
-	}
-
-	// Une panne du catalogue ne doit pas masquer les tomes déjà possédés.
-	const catalogue = uri ? await getBookSeriesVolumes(uri).catch(() => []) : [];
-	const volumes = catalogue.length ? mergeVolumes(catalogue, owned) : owned.map(ownedView).sort(compareVolumes);
+	const volumes = buildSeriesVolumes(user.id, series);
+	const owned = volumes.filter((volume) => volume.bookId !== null);
 
 	return {
 		series: {
-			id: localId ?? owned[0]?.seriesId ?? null,
-			title,
-			description,
-			uri,
-			catalogueUnavailable: Boolean(uri) && catalogue.length === 0
+			id: series.id,
+			title: series.title,
+			description: series.description,
+			authors: JSON.parse(series.authors) as string[],
+			uri: series.externalId,
+			volumeCount: series.volumeCount,
+			catalogueUnavailable: Boolean(series.externalId) && getSeriesVolumes(series.id).length === 0
 		},
 		volumes,
 		ownedCount: owned.length,
-		readCount: owned.filter((book) => book.readingStatus === 'read').length
+		readCount: owned.filter((volume) => volume.readingStatus === 'read').length,
+		/** Tomes dont le résumé et la couverture arrivent encore en arrière-plan. */
+		enriching: pendingEnrichment(series.id),
+		userSeries: getUserSeriesState(user.id, series.id)
 	};
 };
+
+/** La série de l'URL, ou une erreur : toutes les actions en partent. */
+async function requireSeries(key: string) {
+	const series = await resolveSeries(key).catch(() => undefined);
+	if (!series) error(404, 'Série introuvable');
+	return series;
+}
+
+/** Les tomes possédés par le profil dans cette série, avec leur numéro. */
+function ownedVolumes(userId: number, seriesId: number) {
+	return getBooksForUser(userId)
+		.filter((book) => book.seriesId === seriesId)
+		.map((book) => ({ book, ordinal: ownedOrdinal(book) }));
+}
 
 export const actions: Actions = {
 	add: async ({ request, locals }) => {
@@ -135,6 +72,77 @@ export const actions: Actions = {
 			return fail(502, { error: 'Impossible de récupérer ce tome.' });
 		}
 		if (!book) return fail(404, { error: 'Aucune édition exploitable pour ce tome.' });
-		redirect(303, `/livres/${book.id}`);
+		return { ok: 'Tome ajouté à votre bibliothèque.' };
+	},
+
+	// Même geste que cocher un épisode : un clic bascule l'état de lecture.
+	toggleRead: async ({ request, locals }) => {
+		const user = requireUser(locals);
+		const data = await request.formData();
+		const bookId = Number(data.get('bookId'));
+		const read = data.get('read') === '1';
+		if (!bookId) return fail(400, { error: 'Tome inconnu.' });
+		updateUserBook(user.id, bookId, { readingStatus: read ? 'read' : 'unread' });
+	},
+
+	/** « Lu jusqu'ici » : tous les tomes possédés jusqu'à celui-ci. */
+	readUntil: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		const upTo = Number((await request.formData()).get('ordinal'));
+		if (!Number.isFinite(upTo)) return fail(400, { error: 'Tome inconnu.' });
+		for (const { book, ordinal } of ownedVolumes(user.id, series.id)) {
+			if (ordinal !== null && ordinal <= upTo && book.readingStatus !== 'read') {
+				updateUserBook(user.id, book.id, { readingStatus: 'read' });
+			}
+		}
+	},
+
+	markAll: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		for (const { book } of ownedVolumes(user.id, series.id)) {
+			if (book.readingStatus !== 'read') updateUserBook(user.id, book.id, { readingStatus: 'read' });
+		}
+	},
+
+	// Même contrat que les séries télé et les films : 1-10, 0 retire la note.
+	rate: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		const raw = Number((await request.formData()).get('rating'));
+		updateUserSeries(user.id, series.id, {
+			rating: Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null
+		});
+	},
+
+	review: async ({ params, request, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		const review = String((await request.formData()).get('review') ?? '').trim();
+		updateUserSeries(user.id, series.id, { review: review || null });
+		return { ok: review ? 'Avis enregistré.' : 'Avis supprimé.' };
+	},
+
+	refresh: async ({ params, locals }) => {
+		requireUser(locals);
+		const series = await requireSeries(params.key);
+		try {
+			await refreshSeries(series.id);
+		} catch {
+			return fail(502, { error: 'Les catalogues sont momentanément indisponibles.' });
+		}
+		return { ok: 'Série rafraîchie.' };
+	},
+
+	/** Ouvre le premier tome non lu, comme « reprendre » une série télé. */
+	resume: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		const next = ownedVolumes(user.id, series.id)
+			.filter(({ book }) => book.readingStatus !== 'read')
+			.sort((a, b) => (a.ordinal ?? Infinity) - (b.ordinal ?? Infinity))[0];
+		if (!next) return fail(404, { error: 'Tous les tomes de votre bibliothèque sont lus.' });
+		redirect(303, `/livres/${next.book.id}`);
 	}
 };

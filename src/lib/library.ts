@@ -5,7 +5,7 @@
 export const LIBRARY_SECTIONS = [
 	{ key: 'series', href: '/series', label: 'Séries', icon: '📺', addHref: '/recherche?type=series' },
 	{ key: 'films', href: '/films', label: 'Films', icon: '🎬', addHref: '/recherche?type=films' },
-	{ key: 'livres', href: '/livres', label: 'Livres', icon: '📚', addHref: '/livres/ajouter' }
+	{ key: 'livres', href: '/livres', label: 'Livres', icon: '📚', addHref: '/recherche?type=livres' }
 ] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number]['key'];

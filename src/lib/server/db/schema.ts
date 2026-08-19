@@ -194,8 +194,52 @@ export const bookSeries = sqliteTable('book_series', {
 	category: text('category'),
 	externalSource: text('external_source'),
 	externalId: text('external_id'),
+	// Presentation de la serie, recopiee du catalogue : ce qui permet a sa page
+	// de s'afficher sans attendre Inventaire ni Google Books.
+	description: text('description'),
+	authors: text('authors').notNull().default('[]'),
+	/** Nombre de tomes que le catalogue connait : ce qui fait d'elle une serie. */
+	volumeCount: integer('volume_count'),
+	coverUrl: text('cover_url'),
 	lastSyncedAt: text('last_synced_at')
 });
+
+/**
+ * Les tomes d'une serie tels que les catalogues les decrivent, possedes ou
+ * non. Inventaire donne l'ossature (l'ordre, le nombre) et Google Books la
+ * presentation (titre du tome, resume, couverture) : une fois rapprochees et
+ * ecrites ici, la page d'une serie s'affiche comme celle d'une serie telé,
+ * d'un coup et sans dependre de la disponibilite des catalogues.
+ */
+export const bookSeriesVolumes = sqliteTable(
+	'book_series_volumes',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		seriesId: integer('series_id')
+			.notNull()
+			.references(() => bookSeries.id, { onDelete: 'cascade' }),
+		/** Numero du tome ; null pour un hors-serie que le catalogue ne classe pas. */
+		ordinal: real('ordinal'),
+		/** URI de l'oeuvre chez Inventaire, pour ouvrir sa fiche avant tout achat. */
+		sourceUri: text('source_uri'),
+		title: text('title').notNull(),
+		subtitle: text('subtitle'),
+		description: text('description'),
+		isbn13: text('isbn13'),
+		coverUrl: text('cover_url'),
+		publisher: text('publisher'),
+		publishDate: text('publish_date'),
+		pageCount: integer('page_count'),
+		/** Date de l'enrichissement Google Books : un tome paru ne change plus. */
+		enrichedAt: text('enriched_at'),
+		lastSyncedAt: text('last_synced_at')
+	},
+	(t) => [
+		index('book_series_volumes_series').on(t.seriesId),
+		uniqueIndex('book_series_volumes_series_ordinal').on(t.seriesId, t.ordinal),
+		index('book_series_volumes_uri').on(t.sourceUri)
+	]
+);
 
 export const books = sqliteTable(
 	'books',
@@ -294,6 +338,7 @@ export type Movie = typeof movies.$inferSelect;
 export type UserMovie = typeof userMovies.$inferSelect;
 export type MovieWatch = typeof movieWatches.$inferSelect;
 export type BookSeries = typeof bookSeries.$inferSelect;
+export type BookSeriesVolume = typeof bookSeriesVolumes.$inferSelect;
 export type Book = typeof books.$inferSelect;
 export type UserBook = typeof userBooks.$inferSelect;
 export type UserBookSeries = typeof userBookSeries.$inferSelect;

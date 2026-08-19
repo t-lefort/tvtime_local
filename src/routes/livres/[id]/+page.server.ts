@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { books, bookSeries } from '$lib/server/db/schema';
 import { getBookByIsbn } from '$lib/server/book-metadata';
 import { addOrUpdateBook, getBookForUser, removeUserBook, updateUserBook } from '$lib/server/books';
+import { getSeries, seriesNavigation, warmSeries } from '$lib/server/book-series';
 import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -20,8 +21,16 @@ function requireBook(userId: number, value: string) {
 }
 
 export const load: PageServerLoad = ({ params, locals }) => {
-	const book = requireBook(requireUser(locals).id, params.id);
-	return { book: { ...book, authors: JSON.parse(book.authors) as string[] } };
+	const user = requireUser(locals);
+	const book = requireBook(user.id, params.id);
+	// La serie se met a niveau en arriere-plan : cette page n'affiche qu'un
+	// tome et n'a pas a attendre la liste complete pour s'ouvrir.
+	const series = book.seriesId ? getSeries(book.seriesId) : undefined;
+	if (series) warmSeries(series);
+	return {
+		book: { ...book, authors: JSON.parse(book.authors) as string[] },
+		navigation: book.seriesId ? seriesNavigation(user.id, book.seriesId, { bookId: book.id }) : null
+	};
 };
 
 export const actions: Actions = {

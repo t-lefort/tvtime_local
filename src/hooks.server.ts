@@ -22,5 +22,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, '/profils');
 	}
 
+	// L'ajout d'un livre s'est fondu dans la recherche : le scan et la saisie
+	// manuelle y vivent désormais, sous l'onglet « Livres ». L'ancienne page
+	// autonome garde ses marque-pages et ses liens en y menant.
+	if (event.url.pathname === '/livres/ajouter') {
+		const q = event.url.searchParams.get('q');
+		redirect(308, `/recherche?type=livres${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+	}
+
 	return compressResponse(await resolve(event), event.request.headers.get('accept-encoding') ?? '');
 };

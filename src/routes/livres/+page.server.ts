@@ -13,7 +13,11 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		id: book.id,
 		seriesId: book.seriesId,
 		seriesTitle: book.seriesTitle,
+		// Ce que le catalogue sait de la serie : c'est lui qui decide si un tome
+		// s'affiche pour lui-meme ou sous la vignette de sa serie.
+		seriesVolumeCount: book.seriesVolumeCount,
 		title: book.title,
+		subtitle: book.subtitle,
 		authors: JSON.parse(book.authors) as string[],
 		publisher: book.publisher,
 		volume: book.volume,

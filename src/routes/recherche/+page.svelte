@@ -2,6 +2,8 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { beforeNavigate, goto } from '$app/navigation';
+	import BarcodeScanner from '$lib/components/BarcodeScanner.svelte';
+	import BookBanner from '$lib/components/BookBanner.svelte';
 	import BookCover from '$lib/components/BookCover.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import { tmdbImg, yearOf } from '$lib/format';
@@ -16,6 +18,11 @@
 	let hasLocalInput = $state(false);
 	let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 	let navigationCount = 0;
+	// Scan et saisie manuelle n'existent que pour les livres : ce sont les seuls
+	// titres qu'un catalogue peut ne pas connaître, et les seuls qui portent un
+	// code-barres. Les afficher ailleurs n'aurait aucun sens.
+	let manual = $state(false);
+	const booksOnly = $derived(data.type === 'livres');
 
 	const preview = $derived(data.results[0] ?? null);
 	const otherResults = $derived(data.results.slice(1));
@@ -154,6 +161,16 @@
 		if (searchTimeout) clearTimeout(searchTimeout);
 		searching = false;
 	}
+
+	/** Un code-barres lu remplit le champ et lance la recherche sur-le-champ. */
+	function scanned(isbn: string) {
+		if (searchTimeout) clearTimeout(searchTimeout);
+		query = isbn;
+		queuedQuery = isbn;
+		hasLocalInput = true;
+		searching = true;
+		void goto(searchUrl('livres', isbn), { replaceState: true, noScroll: true });
+	}
 </script>
 
 <!-- Chaque catalogue a sa propre imagerie : affiche TMDB ou couverture d'édition. -->
@@ -232,6 +249,15 @@
 			class="w-full rounded-xl border border-line bg-card px-4 py-3 text-ink placeholder:text-mut focus:border-brand focus:outline-none"
 		/>
 	</form>
+
+	{#if booksOnly}
+		<!-- Le code-barres d'un livre est un ISBN : le scanner revient à taper la
+			 requête la plus précise qui soit, il a donc sa place ici et nulle part
+			 ailleurs. -->
+		<div class="mt-2">
+			<BarcodeScanner onDetected={scanned} />
+		</div>
+	{/if}
 </div>
 
 {#if form?.error}
@@ -307,6 +333,11 @@
 {:else if data.q && data.results.length === 0}
 	<div class="rounded-xl bg-card p-8 text-center text-mut">
 		<p>Aucun résultat pour « {data.q} ».</p>
+		{#if booksOnly}
+			<button class="mt-2 text-brand underline" onclick={() => (manual = true)}>
+				Ajouter ce livre manuellement
+			</button>
+		{/if}
 	</div>
 {:else if preview}
 	{@const previewHref = resultHref(preview)}
@@ -317,19 +348,16 @@
 	>
 		<a href={previewHref} class="group block">
 			<div class="relative h-30 bg-card-hover sm:h-36">
-				{#if preview.backdropPath}
-					<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
-				{:else if preview.coverUrl}
-					<!-- Un livre n'a pas d'image large : sa couverture floutée tient le décor
-						 pour que la carte garde la même silhouette que films et séries. -->
-					<img
-						src={preview.coverUrl}
-						alt=""
-						referrerpolicy="no-referrer"
-						class="h-full w-full scale-110 object-cover opacity-50 blur-xl"
-					/>
+				{#if preview.kind === 'livres'}
+					<!-- Un livre n'a pas d'image large : sa couverture agrandie tient le
+						 décor pour que la carte garde la silhouette des films et séries. -->
+					<BookBanner url={preview.coverUrl} tone="card" />
+				{:else}
+					{#if preview.backdropPath}
+						<img src={tmdbImg(preview.backdropPath, 'w780')} alt="" class="h-full w-full object-cover" />
+					{/if}
+					<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
 				{/if}
-				<div class="absolute inset-0 bg-gradient-to-t from-card via-card/55 to-card/5"></div>
 				<p class="absolute top-3 left-3 rounded-full bg-bg/70 px-2.5 py-1 text-[11px] font-semibold text-brand backdrop-blur">
 					Meilleure correspondance
 				</p>
@@ -439,7 +467,57 @@
 	</p>
 {/if}
 
+{#if booksOnly}
+	<!-- Dernier recours, replié par défaut : un livre qu'aucun catalogue ne
+		 connaît (auto-édition, vieux tirage, fanzine) se décrit à la main sans
+		 quitter la recherche. -->
+	<div class="mt-8 border-t border-line pt-4">
+		<button class="text-sm text-mut underline hover:text-ink" onclick={() => (manual = !manual)}>
+			{manual ? 'Masquer la saisie manuelle' : 'Le livre n’est pas dans les catalogues ? Ajout manuel'}
+		</button>
+		{#if manual}
+			<form method="POST" action="?/addManual" class="mt-3 grid gap-3 rounded-2xl bg-card p-4 sm:grid-cols-2">
+				<label class="text-xs text-mut">
+					Titre *
+					<input name="title" required class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<label class="text-xs text-mut">
+					ISBN
+					<input
+						name="isbn"
+						value={/^\d[\d-]*$/.test(data.q) ? data.q : ''}
+						class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink"
+					/>
+				</label>
+				<label class="text-xs text-mut">
+					Auteurs
+					<input name="authors" placeholder="Séparés par des virgules" class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<label class="text-xs text-mut">
+					Éditeur
+					<input name="publisher" class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<label class="text-xs text-mut">
+					Série
+					<input name="seriesTitle" class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<label class="text-xs text-mut">
+					Tome
+					<input name="volume" class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<label class="text-xs text-mut">
+					Date de publication
+					<input name="publishDate" type="date" class="mt-1 w-full rounded-lg border border-line bg-bg px-3 py-2 text-ink" />
+				</label>
+				<button class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink sm:col-span-2">
+					Ajouter à ma bibliothèque
+				</button>
+			</form>
+		{/if}
+	</div>
+{/if}
+
 <p class="mt-8 text-center text-[11px] text-mut/70">
-	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>{#if data.type === 'tout' || data.type === 'livres'}, Inventaire, la BnF et Open
-		Library{/if}
+	Données fournies par <a href="https://www.themoviedb.org" class="underline">TMDB</a>{#if data.type === 'tout' || data.type === 'livres'}, Google Books, Inventaire, la BnF et
+		Open Library{/if}
 </p>

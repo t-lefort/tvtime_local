@@ -3,16 +3,19 @@ import { XMLParser } from 'fast-xml-parser';
 import { isbn13To10, normalizeIsbn } from '$lib/isbn';
 import { BOOK_SERIES_PREFIX, bookSeriesUri } from '$lib/search';
 import {
+	bestDescription,
 	compareVolumes,
+	normalizeBookTitle,
 	foldVolumesIntoSeries,
+	splitSeriesTitle,
 	splitVolumeTitle,
 	volumeNumber
 } from '$lib/books';
+import { googleVolumeByIsbn, type GoogleVolume } from './google-books';
 
 const INVENTAIRE = 'https://inventaire.io/api';
 const BNF = 'https://catalogue.bnf.fr/api/SRU';
 const OPEN_LIBRARY = 'https://openlibrary.org/search.json';
-const GOOGLE_BOOKS = 'https://www.googleapis.com/books/v1/volumes';
 const USER_AGENT = 'TV-Time-local/1.0 (book metadata lookup)';
 
 export interface BookMetadata {
@@ -239,49 +242,31 @@ async function openLibraryByIsbn(isbn13: string): Promise<BookMetadata | null> {
 	};
 }
 
-async function googleByIsbn(isbn13: string): Promise<BookMetadata | null> {
-	const key = process.env.GOOGLE_BOOKS_API_KEY?.trim();
-	if (!key) return null;
-	const url = new URL(GOOGLE_BOOKS);
-	url.searchParams.set('q', `isbn:${isbn13}`);
-	url.searchParams.set('langRestrict', 'fr');
-	url.searchParams.set('maxResults', '5');
-	url.searchParams.set('key', key);
-	const response = await getJson<{
-		items?: {
-			id: string;
-			volumeInfo: Record<string, any> & {
-				industryIdentifiers?: { type?: string; identifier?: string }[];
-			};
-		}[];
-	}>(url);
-	// Google peut occasionnellement renvoyer un volume sans rapport avec l'ISBN demandé.
-	// Ne jamais accepter le premier résultat sans vérifier ses identifiants bibliographiques.
-	const item = response.items?.find((candidate) =>
-		candidate.volumeInfo.industryIdentifiers?.some(
-			(identifier) => normalizeIsbn(identifier.identifier ?? '') === isbn13
-		)
-	);
-	if (!item) return null;
-	const info = item.volumeInfo;
+/** Une notice Google Books ramenee au vocabulaire commun des sources. */
+function googleToMetadata(volume: GoogleVolume, isbn13: string): BookMetadata {
 	return {
-		isbn13,
-		isbn10: isbn13To10(isbn13),
-		title: info.title ?? 'Livre sans titre',
-		subtitle: info.subtitle ?? null,
-		authors: info.authors ?? [],
-		description: info.description ?? null,
-		publisher: info.publisher ?? null,
-		publishDate: info.publishedDate ?? null,
-		language: info.language ?? null,
-		pageCount: info.pageCount ?? null,
-		coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/, 'https:') ?? null,
+		isbn13: volume.isbn13 ?? isbn13,
+		isbn10: volume.isbn10 ?? isbn13To10(isbn13),
+		title: volume.title,
+		subtitle: volume.subtitle,
+		authors: volume.authors,
+		description: volume.description,
+		publisher: volume.publisher,
+		publishDate: volume.publishDate,
+		language: volume.language,
+		pageCount: volume.pageCount,
+		coverUrl: volume.coverUrl,
 		seriesTitle: null,
 		seriesUri: null,
 		volume: null,
 		source: 'google-books',
-		sourceId: item.id
+		sourceId: volume.sourceId
 	};
+}
+
+async function googleByIsbn(isbn13: string): Promise<BookMetadata | null> {
+	const volume = await googleVolumeByIsbn(isbn13);
+	return volume ? googleToMetadata(volume, isbn13) : null;
 }
 
 function mergeMetadata(primary: BookMetadata, extra: BookMetadata): BookMetadata {
@@ -303,25 +288,71 @@ function mergeMetadata(primary: BookMetadata, extra: BookMetadata): BookMetadata
 	};
 }
 
-/** Recherche une edition et fusionne les sources sans laisser une panne bloquer l'ajout. */
+/**
+ * Fusionne une notice riche en presentation dans une notice riche en
+ * structure : Inventaire sait a quelle serie appartient un tome, Google Books
+ * sait comment il s'appelle et de quoi il parle. Le second n'ecrase jamais le
+ * rattachement du premier.
+ */
+function mergePresentation(base: BookMetadata, google: BookMetadata): BookMetadata {
+	return {
+		...base,
+		title: google.title || base.title,
+		subtitle: google.subtitle ?? base.subtitle,
+		authors: google.authors.length ? google.authors : base.authors,
+		publisher: google.publisher ?? base.publisher,
+		publishDate: google.publishDate ?? base.publishDate,
+		pageCount: google.pageCount ?? base.pageCount,
+		coverUrl: google.coverUrl ?? base.coverUrl,
+		volume: base.volume ?? splitVolumeTitle(google.title).volume?.toString() ?? null
+	};
+}
+
+/** Une notice complete : rien a aller chercher ailleurs. */
+function isComplete(metadata: BookMetadata): boolean {
+	return Boolean(
+		metadata.authors.length && metadata.publisher && metadata.publishDate && metadata.coverUrl && metadata.description
+	);
+}
+
+/**
+ * Recherche une edition et fusionne les sources sans laisser une panne bloquer
+ * l'ajout. Inventaire et Google Books partent ensemble : le premier rattache
+ * le tome a sa serie, le second le decrit. La BnF et Open Library ne servent
+ * qu'a boucher les trous restants.
+ */
 export async function getBookByIsbn(rawIsbn: string): Promise<BookMetadata | null> {
 	const isbn13 = normalizeIsbn(rawIsbn);
 	if (!isbn13) return null;
-	const lookups = [inventaireByIsbn, bnfByIsbn, openLibraryByIsbn, googleByIsbn];
-	let result: BookMetadata | null = null;
-	for (const lookup of lookups) {
-		try {
-			const found = await lookup(isbn13);
-			if (found) result = result ? mergeMetadata(result, found) : found;
-			if (
-				result?.source === 'inventaire' &&
-				result.authors.length &&
-				result.publisher &&
-				result.publishDate &&
-				result.coverUrl
-			) return result;
-		} catch {
-			// Une source indisponible ne doit pas masquer les suivantes.
+	const [inventaire, google] = await Promise.all([
+		inventaireByIsbn(isbn13).catch(() => null),
+		googleByIsbn(isbn13).catch(() => null)
+	]);
+	const descriptions: (string | null | undefined)[] = [google?.description, inventaire?.description];
+	let result =
+		inventaire && google ? mergePresentation(inventaire, google) : (inventaire ?? google ?? null);
+	if (!result || !isComplete(result)) {
+		for (const lookup of [bnfByIsbn, openLibraryByIsbn]) {
+			try {
+				const found = await lookup(isbn13);
+				if (!found) continue;
+				descriptions.push(found.description);
+				result = result ? mergeMetadata(result, found) : found;
+				if (isComplete(result)) break;
+			} catch {
+				// Une source indisponible ne doit pas masquer les suivantes.
+			}
+		}
+	}
+	if (!result) return null;
+	result.description = bestDescription(...descriptions);
+	// Google Books ignore la notion de serie : sans cette lecture du titre, un
+	// tome scanne resterait un livre isole, sans page de serie ni tome suivant.
+	if (!result.seriesTitle) {
+		const derived = splitSeriesTitle(result.title);
+		if (derived.seriesTitle) {
+			result.seriesTitle = derived.seriesTitle;
+			result.volume = result.volume ?? (derived.volume === null ? null : String(derived.volume));
 		}
 	}
 	return result;
@@ -350,7 +381,9 @@ function hitToResult(hit: InventaireHit, kind: 'work' | 'series'): BookSearchRes
 		kind,
 		sourceId: kind === 'series' ? `${BOOK_SERIES_PREFIX}${hit.uri}` : hit.uri,
 		title: hit.label,
-		description: hit.description ?? null,
+		// Inventaire ne donne ici que sa glose : au moins qu'elle commence par
+		// une majuscule, le temps qu'un vrai resume la remplace a l'ouverture.
+		description: bestDescription(hit.description),
 		coverUrl: inventaireImage(hit.image)
 	};
 }
@@ -387,7 +420,26 @@ export async function searchBooks(query: string): Promise<BookSearchResult[]> {
 	];
 }
 
-/** Choisit une edition d'une oeuvre trouvee par la recherche plein texte. */
+/**
+ * L'URI de catalogue d'une serie qu'on ne connait que par son nom. Un tome
+ * ajoute par son code-barres arrive sans rattachement — Google Books ignore
+ * les series — et sa serie resterait une coquille vide sans cette recherche.
+ * On exige une egalite stricte des titres : « Liste des episodes de One Piece »
+ * ressort de la meme requete sans etre la meme chose.
+ */
+export async function findSeriesUriByTitle(title: string): Promise<string | null> {
+	const wanted = normalizeBookTitle(title);
+	if (!wanted) return null;
+	const hits = await searchInventaire(title, 'series', 5);
+	const match = hits.find((hit) => normalizeBookTitle(hit.label) === wanted);
+	return match && isInventaireUri(match.uri) ? match.uri : null;
+}
+
+/**
+ * Choisit une edition d'une oeuvre trouvee par la recherche plein texte, puis
+ * la fait decrire par Google Books : sans cela, la fiche d'un tome s'ouvre sur
+ * une glose Wikidata et une couverture manquante.
+ */
 export async function getBookByInventaireWork(workUri: string): Promise<BookMetadata | null> {
 	if (!/^(?:inv|wd):[A-Za-z0-9]+$/.test(workUri)) return null;
 	const url = new URL(`${INVENTAIRE}/entities/reverse-claims`);
@@ -397,7 +449,12 @@ export async function getBookByInventaireWork(workUri: string): Promise<BookMeta
 	const editions = await inventaireEntities((uris ?? []).slice(0, 20));
 	const candidates = Object.values(editions).filter((entity) => normalizeIsbn(firstString(entity, 'wdt:P212') ?? ''));
 	const edition = candidates.find((entity) => entity.originalLang === 'fr') ?? candidates[0];
-	return edition ? inventaireEditionToMetadata(edition) : null;
+	if (!edition) return null;
+	const metadata = await inventaireEditionToMetadata(edition);
+	const google = metadata.isbn13 ? await googleByIsbn(metadata.isbn13).catch(() => null) : null;
+	const merged = google ? mergePresentation(metadata, google) : metadata;
+	merged.description = bestDescription(google?.description, metadata.description);
+	return merged;
 }
 
 /** Une serie du catalogue, telle qu'elle s'affiche en tete de sa page. */
@@ -448,7 +505,7 @@ export async function getBookSeries(uri: string): Promise<BookSeriesInfo | null>
 		return {
 			uri,
 			title: label(entity) ?? 'Serie sans titre',
-			description: entity.descriptions?.fr ?? entity.descriptions?.en ?? null
+			description: bestDescription(entity.descriptions?.fr, entity.descriptions?.en)
 		};
 	});
 }

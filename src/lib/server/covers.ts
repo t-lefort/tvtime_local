@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
-import { books } from './db/schema';
+import { books, bookSeriesVolumes } from './db/schema';
 import { coverSources, isPlaceholderCover, type CoverSubject } from './covers-utils';
 
 /** Les couvertures se rangent à côté de la base, dans le volume persistant. */
@@ -37,7 +37,7 @@ export interface Cover {
 }
 
 /** Téléchargements en cours, pour qu'une grille entière ne les multiplie pas. */
-const inFlight = new Map<number, Promise<Cover | null>>();
+const inFlight = new Map<string, Promise<Cover | null>>();
 
 function cacheKey(sources: string[]): string {
 	// L'empreinte des sources fait partie du nom : si la fiche change de
@@ -45,9 +45,9 @@ function cacheKey(sources: string[]): string {
 	return createHash('sha1').update(sources.join('|')).digest('hex').slice(0, 12);
 }
 
-function readCached(bookId: number, key: string): Cover | null {
+function readCached(id: string, key: string): Cover | null {
 	for (const [contentType, extension] of Object.entries(EXTENSIONS)) {
-		const file = path.join(COVER_DIR, `${bookId}-${key}.${extension}`);
+		const file = path.join(COVER_DIR, `${id}-${key}.${extension}`);
 		if (!fs.existsSync(file)) continue;
 		const body = fs.readFileSync(file);
 		return { body, contentType, etag: `"${key}-${body.length}"` };
@@ -56,23 +56,23 @@ function readCached(bookId: number, key: string): Cover | null {
 }
 
 /** Marqueur d'échec : évite de rappeler des sources muettes à chaque affichage. */
-function missedRecently(bookId: number, key: string): boolean {
-	const marker = path.join(COVER_DIR, `${bookId}-${key}.none`);
+function missedRecently(id: string, key: string): boolean {
+	const marker = path.join(COVER_DIR, `${id}-${key}.none`);
 	if (!fs.existsSync(marker)) return false;
 	return Date.now() - fs.statSync(marker).mtimeMs < RETRY_MISSING_MS;
 }
 
-function forget(bookId: number): void {
+function forget(id: string): void {
 	if (!fs.existsSync(COVER_DIR)) return;
 	for (const name of fs.readdirSync(COVER_DIR)) {
-		if (name.startsWith(`${bookId}-`)) fs.rmSync(path.join(COVER_DIR, name), { force: true });
+		if (name.startsWith(`${id}-`)) fs.rmSync(path.join(COVER_DIR, name), { force: true });
 	}
 }
 
-function store(bookId: number, key: string, extension: string, body: Buffer): void {
+function store(id: string, key: string, extension: string, body: Buffer): void {
 	fs.mkdirSync(COVER_DIR, { recursive: true });
-	forget(bookId);
-	fs.writeFileSync(path.join(COVER_DIR, `${bookId}-${key}.${extension}`), body);
+	forget(id);
+	fs.writeFileSync(path.join(COVER_DIR, `${id}-${key}.${extension}`), body);
 }
 
 async function download(url: string): Promise<{ contentType: string; body: Buffer } | null> {
@@ -99,23 +99,33 @@ async function download(url: string): Promise<{ contentType: string; body: Buffe
 	}
 }
 
-async function resolve(bookId: number, subject: CoverSubject): Promise<Cover | null> {
+async function resolve(id: string, subject: CoverSubject): Promise<Cover | null> {
 	const sources = coverSources(subject);
 	const key = cacheKey(sources);
-	const cached = readCached(bookId, key);
+	const cached = readCached(id, key);
 	if (cached) return cached;
-	if (!sources.length || missedRecently(bookId, key)) return null;
+	if (!sources.length || missedRecently(id, key)) return null;
 
 	for (const url of sources) {
 		const found = await download(url);
 		if (!found) continue;
-		store(bookId, key, EXTENSIONS[found.contentType], found.body);
+		store(id, key, EXTENSIONS[found.contentType], found.body);
 		return { ...found, etag: `"${key}-${found.body.length}"` };
 	}
 	fs.mkdirSync(COVER_DIR, { recursive: true });
-	forget(bookId);
-	fs.writeFileSync(path.join(COVER_DIR, `${bookId}-${key}.none`), '');
+	forget(id);
+	fs.writeFileSync(path.join(COVER_DIR, `${id}-${key}.none`), '');
 	return null;
+}
+
+/** Un seul téléchargement à la fois par image, quel que soit le nombre d'appels. */
+function once(id: string, subject: CoverSubject | undefined): Promise<Cover | null> {
+	if (!subject) return Promise.resolve(null);
+	const pending = inFlight.get(id);
+	if (pending) return pending;
+	const task = resolve(id, subject).finally(() => inFlight.delete(id));
+	inFlight.set(id, task);
+	return task;
 }
 
 /**
@@ -126,8 +136,6 @@ async function resolve(bookId: number, subject: CoverSubject): Promise<Cover | n
  * essayant chaque source à la suite, puis on ne ressert que la copie locale.
  */
 export function getCover(bookId: number): Promise<Cover | null> {
-	const pending = inFlight.get(bookId);
-	if (pending) return pending;
 	const book = db
 		.select({
 			coverUrl: books.coverUrl,
@@ -139,8 +147,49 @@ export function getCover(bookId: number): Promise<Cover | null> {
 		.from(books)
 		.where(eq(books.id, bookId))
 		.get();
-	if (!book) return Promise.resolve(null);
-	const task = resolve(bookId, book).finally(() => inFlight.delete(bookId));
-	inFlight.set(bookId, task);
-	return task;
+	return once(String(bookId), book);
+}
+
+/**
+ * Couverture d'un tome que le profil ne possède pas encore, servie du même
+ * cache local. Une page de série affiche cent vignettes : les laisser pointer
+ * chez Google Books ferait cent requêtes distantes à chaque ouverture, et
+ * autant de trous quand il refuse d'en servir une.
+ */
+export function getSeriesVolumeCover(volumeId: number): Promise<Cover | null> {
+	const volume = db
+		.select({ coverUrl: bookSeriesVolumes.coverUrl, isbn13: bookSeriesVolumes.isbn13 })
+		.from(bookSeriesVolumes)
+		.where(eq(bookSeriesVolumes.id, volumeId))
+		.get();
+	if (!volume) return Promise.resolve(null);
+	return once(`t${volumeId}`, {
+		...volume,
+		isbn10: null,
+		externalSource: null,
+		externalId: null
+	});
+}
+
+/** Une journée : assez pour ne plus y revenir, assez court pour voir une correction. */
+const CACHE_CONTROL = 'public, max-age=86400';
+
+/**
+ * Réponse HTTP d'une couverture, partagée par les deux routes qui en servent.
+ * L'absence de couverture est un 404 : le composant retombe alors sur son
+ * emoji, et le navigateur retient la réponse au lieu de la redemander.
+ */
+export function coverResponse(cover: Cover | null, request: Request): Response {
+	if (!cover) return new Response(null, { status: 404, headers: { 'Cache-Control': CACHE_CONTROL } });
+	if (request.headers.get('if-none-match') === cover.etag) {
+		return new Response(null, { status: 304, headers: { ETag: cover.etag, 'Cache-Control': CACHE_CONTROL } });
+	}
+	return new Response(new Uint8Array(cover.body), {
+		headers: {
+			'Content-Type': cover.contentType,
+			'Content-Length': String(cover.body.length),
+			ETag: cover.etag,
+			'Cache-Control': CACHE_CONTROL
+		}
+	});
 }

@@ -2,13 +2,15 @@ import cron from 'node-cron';
 import { sql } from 'drizzle-orm';
 import { db } from './db';
 import { addOrUpdateShow } from './shows';
+import { enrichSeriesVolumes, getSeries, syncSeriesSkeleton } from './book-series';
 import { getProviders } from './tmdb';
 
 let started = false;
 
 /**
  * Rafraîchit chaque nuit les séries encore en production (nouvelles saisons, dates de
- * diffusion, plateformes) puis les plateformes de streaming du reste du catalogue.
+ * diffusion, plateformes), puis les plateformes de streaming du reste du catalogue,
+ * puis les tomes des séries de livres.
  */
 export function startDailySync(): void {
 	if (started) return;
@@ -17,6 +19,7 @@ export function startDailySync(): void {
 		try {
 			await syncOngoingShows();
 			await syncProviders();
+			await syncBookSeries();
 		} catch (e) {
 			console.error('[sync] échec :', e);
 		}
@@ -81,4 +84,44 @@ export async function syncProviders(): Promise<{ ok: number; failed: number }> {
 	}
 	console.log(`[sync] plateformes : ${ok} mises à jour, ${failed} échecs`);
 	return { ok, failed };
+}
+
+/** Tomes décrits en une nuit, tous titres confondus : le quota Google Books est fini. */
+const NIGHTLY_VOLUME_BUDGET = 80;
+
+/**
+ * Complète les séries de livres de la bibliothèque : nouveaux tomes parus, et
+ * descriptions des tomes que les passes précédentes n'ont pas eu le temps de
+ * décrire. Sans cela, une série de cent tomes ne se remplirait qu'au rythme
+ * des consultations de sa page.
+ */
+export async function syncBookSeries(): Promise<{ volumes: number; series: number }> {
+	const targets = db.all<{ id: number; title: string; pending: number }>(sql`
+		SELECT s.id, s.title, COUNT(v.id) FILTER (WHERE v.enriched_at IS NULL) AS pending
+		FROM book_series s
+		JOIN books b ON b.series_id = s.id
+		JOIN user_books ub ON ub.book_id = b.id
+		LEFT JOIN book_series_volumes v ON v.series_id = s.id
+		GROUP BY s.id
+		ORDER BY pending DESC
+	`);
+	let budget = NIGHTLY_VOLUME_BUDGET;
+	let volumes = 0;
+	let touched = 0;
+	for (const target of targets) {
+		if (budget <= 0) break;
+		const series = getSeries(target.id);
+		if (!series) continue;
+		try {
+			await syncSeriesSkeleton(series);
+			const enriched = await enrichSeriesVolumes(series.id, Math.min(budget, 25));
+			budget -= Math.min(budget, 25);
+			volumes += enriched;
+			touched += 1;
+		} catch (e) {
+			console.error(`[sync] série de livres ${target.title} :`, e);
+		}
+	}
+	console.log(`[sync] livres : ${volumes} tomes décrits sur ${touched} séries`);
+	return { volumes, series: touched };
 }

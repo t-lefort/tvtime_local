@@ -76,7 +76,7 @@ export function bookSeriesUri(sourceId: string | null | undefined): string | nul
  * Ou mene un resultat de recherche « livre ». Une serie ouvre la liste
  * ordonnee de ses tomes ; un tome deja possede ouvre sa fiche de
  * bibliotheque, sinon celle du catalogue. Une edition trouvee par ISBN n'a
- * pas de fiche : elle passe par la page d'ajout, qui sait la retrouver.
+ * pas de fiche : elle reste dans la recherche, d'ou elle s'ajoute.
  */
 export function bookResultHref(result: Pick<SearchResult, 'sourceId' | 'localId' | 'name'>): string {
 	const seriesUri = bookSeriesUri(result.sourceId);
@@ -85,5 +85,5 @@ export function bookResultHref(result: Pick<SearchResult, 'sourceId' | 'localId'
 	if (result.sourceId && /^(?:inv|wd):/.test(result.sourceId)) {
 		return `/livres/oeuvre/${encodeURIComponent(result.sourceId)}`;
 	}
-	return `/livres/ajouter?q=${encodeURIComponent(result.name)}`;
+	return `/recherche?type=livres&q=${encodeURIComponent(result.name)}`;
 }

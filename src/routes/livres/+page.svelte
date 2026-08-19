@@ -6,7 +6,7 @@
 	import { matchesQuery, parseQuery } from '$lib/library';
 	import { updateListParams } from '$lib/library-nav';
 	import { DEFAULT_SORT, type SortOrder } from '$lib/sort';
-	import { volumeNumber } from '$lib/books';
+	import { formatVolumeLabel, shouldGroupAsSeries, volumeNumber } from '$lib/books';
 
 	let { data } = $props();
 
@@ -59,17 +59,27 @@
 
 	/**
 	 * Une série tient une seule vignette, comme une série télé tient la sienne :
-	 * sinon vingt tomes de la même série remplissent l'écran et cachent le reste
-	 * de la bibliothèque. Un tome esseulé reste affiché pour lui-même.
+	 * un tome n'apparaît pas plus dans la bibliothèque qu'un épisode n'y
+	 * apparaît seul. C'est le catalogue qui tranche — dès qu'il connaît la série
+	 * pour ce qu'elle est, un unique tome sur cent suffit à l'ouvrir. Une série
+	 * qu'aucun catalogue n'atteste attend d'avoir réuni plusieurs tomes, pour
+	 * qu'un roman isolé ne disparaisse pas derrière une série fantôme.
 	 */
 	type Entry =
 		| { kind: 'book'; key: string; book: Book }
-		| { kind: 'series'; key: string; id: number; title: string; volumes: Book[] };
+		| {
+				kind: 'series';
+				key: string;
+				id: number;
+				title: string;
+				volumes: Book[];
+				volumeCount: number | null;
+		  };
 
 	const entries: Entry[] = $derived.by(() => {
-		const sizes = new Map<number, number>();
+		const owned = new Map<number, number>();
 		for (const book of books) {
-			if (book.seriesId !== null) sizes.set(book.seriesId, (sizes.get(book.seriesId) ?? 0) + 1);
+			if (book.seriesId !== null) owned.set(book.seriesId, (owned.get(book.seriesId) ?? 0) + 1);
 		}
 		const seen = new Set<number>();
 		const list: Entry[] = [];
@@ -77,7 +87,13 @@
 		// premier tome, qu'on trie par titre ou par date d'ajout.
 		for (const book of books) {
 			const seriesId = book.seriesId;
-			if (seriesId === null || (sizes.get(seriesId) ?? 0) < 2) {
+			const grouped =
+				seriesId !== null &&
+				shouldGroupAsSeries({
+					volumeCount: book.seriesVolumeCount,
+					ownedCount: owned.get(seriesId) ?? 0
+				});
+			if (seriesId === null || !grouped) {
 				list.push({ kind: 'book', key: `book:${book.id}`, book });
 				continue;
 			}
@@ -88,11 +104,30 @@
 				key: `series:${seriesId}`,
 				id: seriesId,
 				title: book.seriesTitle ?? book.title,
-				volumes: books.filter((other) => other.seriesId === seriesId)
+				volumes: books.filter((other) => other.seriesId === seriesId),
+				volumeCount: book.seriesVolumeCount
 			});
 		}
 		return list;
 	});
+
+	/** Le tome tel qu'il se nomme partout ailleurs : « Tome 51 · Les onze supernovae ». */
+	function volumeOf(book: Book) {
+		return formatVolumeLabel({
+			seriesTitle: book.seriesTitle,
+			title: book.title,
+			subtitle: book.subtitle,
+			volume: book.volume
+		});
+	}
+
+	function titleOf(book: Book): string {
+		return volumeOf(book).title ?? book.title;
+	}
+
+	function labelOf(book: Book): string {
+		return volumeOf(book).label;
+	}
 
 	/** Vignette d'une série : son premier tome, à défaut le premier connu. */
 	function seriesCover(volumes: Book[]): Book {
@@ -170,10 +205,10 @@
 				<a href="/livres/series/{entry.id}" class="group min-w-0">
 					<div class="relative aspect-[2/3] overflow-hidden rounded-lg bg-card shadow-md">
 						<BookCover bookId={cover.id} alt={entry.title} />
-						<!-- Le nombre de tomes tient lieu de vignette empilée : on voit
-							 d'un coup d'œil qu'on a affaire à une série et à son volume. -->
+						<!-- Ce qu'on possède face à ce que compte la série : on voit d'un
+							 coup d'œil qu'il s'agit d'une série, et ce qu'il en manque. -->
 						<span class="absolute top-1.5 right-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-ink">
-							{entry.volumes.length} tomes
+							{entry.volumes.length}{entry.volumeCount ? `/${entry.volumeCount}` : ''}
 						</span>
 						{#if entry.volumes.some((volume) => volume.favorite)}
 							<span class="absolute top-1.5 left-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs">⭐</span>
@@ -185,7 +220,12 @@
 						{/if}
 					</div>
 					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{entry.title}</p>
-					<p class="truncate text-xs text-mut">Série · {entry.volumes.length} tomes</p>
+					<p class="truncate text-xs text-mut">
+						Série · {entry.volumes.length} tome{entry.volumes.length > 1 ? 's' : ''}
+						{#if entry.volumeCount && entry.volumeCount > entry.volumes.length}
+							sur {entry.volumeCount}
+						{/if}
+					</p>
 				</a>
 			{:else}
 				{@const book = entry.book}
@@ -212,10 +252,12 @@
 							<span class="absolute bottom-1.5 left-1.5 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] font-semibold text-brand">En cours</span>
 						{/if}
 					</div>
-					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{book.title}</p>
+					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">
+						{titleOf(book)}
+					</p>
 					<p class="truncate text-xs text-mut">
 						{book.seriesTitle
-							? `${book.seriesTitle}${book.volume ? ` · T. ${book.volume}` : ''}`
+							? `${book.seriesTitle} · ${labelOf(book)}`
 							: book.authors.join(', ')}
 					</p>
 				</a>

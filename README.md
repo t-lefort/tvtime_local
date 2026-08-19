@@ -7,15 +7,15 @@ Self-hosted web app for tracking TV shows, movies **and books**. It combines a m
 - **Shows**: your library with progress bars, filters (watching, up to date, stopped, finished, not started)
 - **Show detail**: expandable seasons, checkable episodes, "mark all", "watched up to here", **stop/resume** a show, favorite, deletion. The cast shows the main billing, with a **full cast** button that loads every credited actor from TMDB (also on movies)
 - **Movies**: collection with filters (to watch, watched, favorites), mark watched/unwatched, rewatches, favorite
-- **Books**: personal library with owned/wishlist/reading-status filters, the same 1–10 star rating as shows and movies, a review and edition details. Add from the general search, by ISBN, manual entry or EAN-13 camera scan; Bubble CSV exports can be imported from the profile page
-- **Book series**: volumes of the same series share a single library tile and a **series page** that lists every volume in order, like the episodes of a season — what you own, what you have read, and a one-click add for what is missing. Covers are downloaded once and served from `./data/covers/`, so a shelf of a hundred books does not depend on the catalogues answering a hundred times
+- **Books**: personal library with owned/wishlist/reading-status filters, the same 1–10 star rating as shows and movies, a review and edition details. Everything is added from the general search — by title, by ISBN, by **EAN-13 camera scan** (the scanner appears in the **Books** tab only, since it is the only catalogue whose titles carry a barcode) or by manual entry when no catalogue knows the book. Bubble CSV exports can be imported from the profile page
+- **Book series**: a volume no more appears alone in the library than an episode does — as soon as a catalogue knows the series, its volumes share a single tile showing what you own against what the series counts (`3/108`). Its **series page** is built like a TV show's: banner, reading progress, a 1–10 rating and a review for the series itself, then every volume in order like the episodes of a season — read/unread toggles, "mark all as read", "read up to here", and a one-click add for what is missing. From a volume you reach **the previous and the next one** without going back to the list, exactly as between two episodes; a volume you do not own yet leads to its catalogue page, from which it is added. The whole series is stored in SQLite, so its page opens at once instead of waiting on the catalogues, and covers are downloaded once and served from `./data/covers/`
 - **Where to watch**: on every show and movie, the streaming platforms where the title is available (subscription, free, rent/buy — JustWatch data via TMDB, region configurable with `WATCH_REGION`, `FR` by default)
 - **For you**: personalized suggestions of shows and movies, based on your ratings, favorites and watch history — filterable by **streaming platform** (the platforms available in your region, grouped: no "with Ads" or reseller variants). Can be hidden from the profile settings
-- **Search**: add shows and movies via TMDB (French metadata) and books via Inventaire, the BnF, Open Library and Google Books. A book series comes back as a single result instead of a handful of its volumes. The default **All** tab searches the three catalogues at once; the **Shows**, **Movies** and **Books** tabs narrow it down
+- **Search**: add shows and movies via TMDB (French metadata) and books via Google Books, Inventaire, the BnF and Open Library. A book series comes back as a single result instead of a handful of its volumes. The default **All** tab searches the three catalogues at once; the **Shows**, **Movies** and **Books** tabs narrow it down — the latter also carries the barcode scanner and the manual-entry form
 - **Profiles**: several people can use the same instance at the same time — each profile has its own library, watch history, favorites and stats (Netflix-style picker). A profile can optionally have a **password** (otherwise one click opens it) and a **picture** (set from the profile page)
 - **Profile**: total screen time (shows + movies), watch counts per month, genre breakdown, ranking of watched shows
 
-Shows still in production are refreshed automatically every night (new seasons, air dates), along with the streaming platforms of the whole library. Installable as a PWA on mobile.
+Shows still in production are refreshed automatically every night (new seasons, air dates), along with the streaming platforms of the whole library and the volumes of your book series (newly published volumes, and the descriptions and covers that earlier passes had not fetched yet). Installable as a PWA on mobile.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 | Variable | Purpose |
 | --- | --- |
 | `TMDB_API_KEY` | TMDB API key (required) |
-| `GOOGLE_BOOKS_API_KEY` | Optional Google Books key used only after Inventaire, BnF and Open Library |
+| `GOOGLE_BOOKS_API_KEY` | Google Books key — **strongly recommended** for books: it is the only source that gives a real French synopsis, a volume title separated from the series title, and a cover. Free, from [Google Cloud](https://console.cloud.google.com/apis/library/books.googleapis.com). Without it the app falls back on Inventaire, the BnF and Open Library, whose book descriptions are one-line catalogue glosses |
 | `ORIGIN` | Exact URL used to access the app when deployed (e.g. `http://192.168.1.10:3000`) — required outside localhost, otherwise form submissions are rejected (CSRF) |
 | `BODY_SIZE_LIMIT` | Max request size for the Node server (Node's default is 512K). Already set to `200M` in the Docker image; set it too if you run `node build/index.js` directly, otherwise large uploads (database import) fail with « Payload Too Large » |
 | `DATABASE_PATH` | SQLite database path (default `./data/tvtime.db`) |
@@ -85,6 +85,6 @@ To import the TV Time GDPR export, use Profile → **Import TV Time** in the app
 
 SvelteKit (Svelte 5) · SQLite (better-sqlite3 + Drizzle) · Tailwind CSS v4 · adapter-node · Docker
 
-Book metadata comes primarily from Inventaire (open CC0 bibliographic data), enriched by the BnF and Open Library. Live camera scanning requires HTTPS, except on localhost.
+Book metadata comes from two sources with complementary jobs, because no single one does both. **Inventaire** (open CC0 data, backed by Wikidata) is the only catalogue that knows what a *series* is: how many volumes it has and in what order. It describes the volumes themselves very poorly — one volume is labelled in Japanese, the next is just a number, the third bears its French title, and its "descriptions" are catalogue glosses (`série de manga d'Eiichirō Oda`) rather than synopses. **Google Books** is the opposite: an excellent description of a French volume (its own title, a real synopsis, a cover, its ISBN) and no notion of a series at all. So the series skeleton comes from Inventaire, each volume is then described by Google Books, and the result is stored in SQLite; the BnF and Open Library fill remaining gaps by ISBN. Live camera scanning requires HTTPS, except on localhost.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Episode air times are provided by [TVmaze](https://www.tvmaze.com/).

@@ -59,10 +59,12 @@ function findOrCreateSeries(metadata: BookMetadata, opts: StoreBookOptions): num
 				collection: opts.collection ?? null,
 				category: opts.category ?? null,
 				externalSource: metadata.source,
-				// L'URI du catalogue permet ensuite de retrouver la liste
-				// complete et ordonnee des tomes de la serie.
-				externalId: metadata.seriesUri,
-				lastSyncedAt: sql`(datetime('now'))` as unknown as string
+				// L'URI du catalogue permet ensuite de retrouver la liste complete
+				// et ordonnee des tomes de la serie. Elle manque quand c'est Google
+				// Books qui a decrit le tome : `lastSyncedAt` reste alors vide, ce
+				// qui vaut « jamais synchronisee » et declenche le rattachement au
+				// catalogue a la premiere consultation de la serie.
+				externalId: metadata.seriesUri
 			})
 			.returning()
 			.get();
@@ -214,6 +216,8 @@ export function collectBook(userId: number, book: Book, opts: CollectBookOptions
 export interface BookWithUser extends Book {
 	seriesTitle: string | null;
 	seriesType: string | null;
+	/** Nombre de tomes que le catalogue connait a la serie, s'il la connait. */
+	seriesVolumeCount: number | null;
 	category: string | null;
 	addedAt: string;
 	inCollection: boolean;
@@ -290,7 +294,8 @@ export function getBooksForUser(userId: number): BookWithUser[] {
 			b.publish_date AS publishDate, b.language, b.page_count AS pageCount,
 			b.cover_url AS coverUrl, b.volume, b.numbering, b.price,
 			b.last_synced_at AS lastSyncedAt,
-			bs.title AS seriesTitle, bs.type AS seriesType, bs.category,
+			bs.title AS seriesTitle, bs.type AS seriesType,
+			bs.volume_count AS seriesVolumeCount, bs.category,
 			ub.added_at AS addedAt, ub.in_collection AS inCollection, ub.wishlist,
 			ub.reading_status AS readingStatus, ub.favorite, ub.rating, ub.review,
 			ub.signed, ub.original_edition AS originalEdition,
@@ -357,4 +362,40 @@ export function getUserBookSeries(
 	if (!series) return undefined;
 	const owned = getBooksForUser(userId).filter((book) => book.seriesId === seriesId);
 	return owned.length ? { series, books: owned } : undefined;
+}
+
+
+/** Note et avis du profil sur une serie entiere, comme sur une serie telé. */
+export interface UserSeriesState {
+	rating: number | null;
+	review: string | null;
+}
+
+export function getUserSeriesState(userId: number, seriesId: number): UserSeriesState {
+	const row = db
+		.select()
+		.from(userBookSeries)
+		.where(and(eq(userBookSeries.userId, userId), eq(userBookSeries.seriesId, seriesId)))
+		.get();
+	return { rating: row?.rating ?? null, review: row?.review ?? null };
+}
+
+/**
+ * Ecrit l'etat d'un profil sur une serie, en creant la ligne au besoin : on
+ * peut noter une serie avant d'en posseder le moindre tome.
+ */
+export function updateUserSeries(userId: number, seriesId: number, values: Partial<UserSeriesState>): void {
+	const existing = db
+		.select()
+		.from(userBookSeries)
+		.where(and(eq(userBookSeries.userId, userId), eq(userBookSeries.seriesId, seriesId)))
+		.get();
+	if (existing) {
+		db.update(userBookSeries).set(values).where(eq(userBookSeries.id, existing.id)).run();
+		return;
+	}
+	db.insert(userBookSeries)
+		.values({ userId, seriesId, rating: values.rating ?? null, review: values.review ?? null })
+		.onConflictDoNothing()
+		.run();
 }

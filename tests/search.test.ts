@@ -98,6 +98,11 @@ test('bookResultHref mène à la série, à la fiche locale, sinon au catalogue'
 	assert.equal(bookResultHref(book('serie:wd:Q28667972', 7)), '/livres/series/wd%3AQ28667972');
 	assert.equal(bookResultHref(book('inv:546e0caa', 7)), '/livres/7');
 	assert.equal(bookResultHref(book('inv:546e0caa')), '/livres/oeuvre/inv%3A546e0caa');
-	assert.equal(bookResultHref(book('isbn:9782723427371')), '/livres/ajouter?q=One%20Piece%2C%20tome%202');
-	assert.equal(bookResultHref(book(null)), '/livres/ajouter?q=One%20Piece%2C%20tome%202');
+	// Une édition trouvée par ISBN n'a pas de fiche de catalogue : elle reste
+	// dans la recherche, d'où le scan et l'ajout manuel la rattrapent.
+	assert.equal(
+		bookResultHref(book('isbn:9782723427371')),
+		'/recherche?type=livres&q=One%20Piece%2C%20tome%202'
+	);
+	assert.equal(bookResultHref(book(null)), '/recherche?type=livres&q=One%20Piece%2C%20tome%202');
 });

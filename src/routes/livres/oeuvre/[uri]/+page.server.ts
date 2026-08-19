@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { getBookByInventaireWork } from '$lib/server/book-metadata';
 import { bookTitleKey, collectBookFromSource, collectedBookIds } from '$lib/server/books';
+import { resolveSeries, seriesNavigation, warmSeries } from '$lib/server/book-series';
 import { requireUser } from '$lib/server/users';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -14,9 +15,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const book = await getBookByInventaireWork(params.uri).catch(() => null);
 	if (!book) error(404, 'Aucune édition exploitable pour cette œuvre');
 	const owned = collectedBookIds(user.id);
+	// La serie du tome, pour le situer et permettre d'aller au precedent ou au
+	// suivant sans repasser par sa liste.
+	const series = book.seriesUri ? await resolveSeries(book.seriesUri).catch(() => undefined) : undefined;
+	if (series) warmSeries(series);
 	return {
 		uri: params.uri,
 		book,
+		navigation: series ? seriesNavigation(user.id, series.id, { uri: params.uri }) : null,
 		localId:
 			(book.isbn13 ? owned.get(`isbn:${book.isbn13}`) : undefined) ??
 			(book.sourceId ? owned.get(book.sourceId) : undefined) ??
