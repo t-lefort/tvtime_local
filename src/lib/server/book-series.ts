@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from './db';
-import { bookSeries, bookSeriesVolumes, type BookSeries, type BookSeriesVolume } from './db/schema';
+import { books, bookSeries, bookSeriesVolumes, type BookSeries, type BookSeriesVolume } from './db/schema';
 import {
 	findSeriesUriByTitle,
 	getBookSeries,
@@ -8,8 +8,8 @@ import {
 	seriesUriFromSourceId,
 	type BookSeriesVolume as CatalogueVolume
 } from './book-metadata';
-import { googleVolumeOfSeries, GoogleBooksUnavailable } from './google-books';
-import { getBooksForUser } from './books';
+import { googleVolumesOfSeries, GoogleBooksUnavailable, type GoogleVolume } from './google-books';
+import { addOrUpdateBook, collectBook, getBooksForUser } from './books';
 import {
 	bestDescription,
 	compareVolumes,
@@ -33,8 +33,17 @@ import {
 /** Au-delà, on redemande au catalogue si la série a gagné des tomes. */
 const SKELETON_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Tomes décrits par passe : le quota Google Books est vite atteint. */
-const ENRICH_BATCH = 12;
+/** Recherches par passe, quand on ne fait que passer : le quota est fini. */
+const ENRICH_BATCH = 4;
+
+/**
+ * Sur la page d'une série, en revanche, on décrit tout : c'est là qu'on
+ * regarde les couvertures, et n'en afficher qu'une poignée à la fois donnait
+ * une grille à trous qui ne se remplissait qu'au fil des visites. Une réponse
+ * couvrant une dizaine de tomes, trente recherches suffisent aux plus longues
+ * séries.
+ */
+const ENRICH_FULL = 30;
 
 function nowIso(): string {
 	return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -180,49 +189,111 @@ export async function syncSeriesSkeleton(series: BookSeries): Promise<void> {
 }
 
 /**
+ * Fait profiter de la même description le tome déjà rangé dans une
+ * bibliothèque. Sans cela, une série ajoutée en bloc avant la fin de son
+ * enrichissement resterait nue pour toujours : ce sont les tomes du catalogue
+ * qui se décrivent, pas les livres qu'ils sont devenus.
+ *
+ * Seuls les champs vides se remplissent — une fiche corrigée à la main reste
+ * telle qu'on l'a corrigée.
+ */
+function describeOwnedBook(volume: BookSeriesVolume, found: GoogleVolume): void {
+	if (volume.ordinal === null) return;
+	const owned = db
+		.select()
+		.from(books)
+		.where(and(eq(books.seriesId, volume.seriesId), eq(books.volume, String(volume.ordinal))))
+		.all();
+	for (const book of owned) {
+		const updates = {
+			...(book.subtitle ? {} : { subtitle: found.subtitle }),
+			...(book.description ? {} : { description: found.description }),
+			...(book.coverUrl ? {} : { coverUrl: found.coverUrl }),
+			...(book.publisher ? {} : { publisher: found.publisher }),
+			...(book.pageCount ? {} : { pageCount: found.pageCount }),
+			...(book.isbn13 ? {} : { isbn13: found.isbn13 })
+		};
+		if (!Object.keys(updates).length) continue;
+		try {
+			db.update(books).set(updates).where(eq(books.id, book.id)).run();
+		} catch {
+			// L'ISBN est unique : si une autre édition le porte déjà, on laisse
+			// la fiche en l'état plutôt que d'échouer l'enrichissement entier.
+		}
+	}
+}
+
+/** Écrit dans un tome ce que Google Books en dit, ou constate qu'il l'ignore. */
+function describeVolume(volume: BookSeriesVolume, found: GoogleVolume | undefined): void {
+	db.update(bookSeriesVolumes)
+		.set({
+			// Marquer même l'absence de résultat : une série que Google ne connaît
+			// pas serait sinon réinterrogée à chaque affichage.
+			enrichedAt: nowIso(),
+			...(found
+				? {
+						title: found.title,
+						subtitle: found.subtitle,
+						description: found.description,
+						isbn13: found.isbn13 ?? volume.isbn13,
+						coverUrl: found.coverUrl ?? volume.coverUrl,
+						publisher: found.publisher,
+						publishDate: found.publishDate ?? volume.publishDate,
+						pageCount: found.pageCount
+					}
+				: {})
+		})
+		.where(eq(bookSeriesVolumes.id, volume.id))
+		.run();
+	if (found) describeOwnedBook(volume, found);
+}
+
+/**
  * Fait décrire par Google Books les tomes qui ne le sont pas encore. Un tome
  * paru ne change plus : une fois décrit, on n'y revient jamais.
+ *
+ * Le budget compte des *recherches*, pas des tomes : une seule réponse décrit
+ * une dizaine de tomes à la fois, et c'est le nombre d'appels qui coûte — le
+ * quota est fini et l'API répond 503 une fois sur deux.
  */
 export async function enrichSeriesVolumes(seriesId: number, budget = ENRICH_BATCH): Promise<number> {
-	const series = db.select().from(bookSeries).where(eq(bookSeries.id, seriesId)).get();
+	const series = getSeries(seriesId);
 	if (!series) return 0;
-	const pending = getSeriesVolumes(seriesId)
-		.filter((volume) => !volume.enrichedAt && volume.ordinal !== null)
-		.slice(0, budget);
+	const pending = getSeriesVolumes(seriesId).filter(
+		(volume) => !volume.enrichedAt && volume.ordinal !== null
+	);
+	const waiting = new Map(pending.map((volume) => [volume.ordinal as number, volume]));
 	let enriched = 0;
 	let authors: string[] = [];
+	let searches = 0;
 	for (const volume of pending) {
-		let found;
+		if (searches >= budget) break;
+		const ordinal = volume.ordinal as number;
+		// Une recherche précédente a pu décrire ce tome au passage.
+		if (!waiting.has(ordinal)) continue;
+		let harvest;
 		try {
-			found = await googleVolumeOfSeries(series.title, volume.ordinal as number);
+			harvest = await googleVolumesOfSeries(series.title, ordinal);
+			searches += 1;
 		} catch (error) {
 			// Google est tombé : inutile de marquer ces tomes comme décrits, ni
 			// d'insister sur les suivants. La passe suivante les reprendra.
 			if (error instanceof GoogleBooksUnavailable) break;
 			throw error;
 		}
-		if (found?.authors.length && !authors.length) authors = found.authors;
-		db.update(bookSeriesVolumes)
-			.set({
-				// Marquer même l'absence de résultat : une série que Google ne
-				// connaît pas serait sinon réinterrogée à chaque affichage.
-				enrichedAt: nowIso(),
-				...(found
-					? {
-							title: found.title,
-							subtitle: found.subtitle,
-							description: found.description,
-							isbn13: found.isbn13 ?? volume.isbn13,
-							coverUrl: found.coverUrl ?? volume.coverUrl,
-							publisher: found.publisher,
-							publishDate: found.publishDate ?? volume.publishDate,
-							pageCount: found.pageCount
-						}
-					: {})
-			})
-			.where(eq(bookSeriesVolumes.id, volume.id))
-			.run();
-		if (found) enriched += 1;
+		for (const [number, found] of harvest) {
+			const target = waiting.get(number);
+			if (!target) continue;
+			describeVolume(target, found);
+			waiting.delete(number);
+			enriched += 1;
+			if (found.authors.length && !authors.length) authors = found.authors;
+		}
+		// Le tome demandé n'est pas revenu : Google ne le connaît pas.
+		if (waiting.has(ordinal)) {
+			describeVolume(volume, undefined);
+			waiting.delete(ordinal);
+		}
 	}
 	if (enriched) {
 		// La couverture et les auteurs de la série sont ceux de son premier tome décrit.
@@ -257,10 +328,10 @@ export function pendingEnrichment(seriesId: number): number {
  * affiche déjà les tomes avec leur rang, et gagne leur titre et leur résumé au
  * fil des consultations suivantes.
  */
-export function enrichInBackground(seriesId: number): void {
+export function enrichInBackground(seriesId: number, budget = ENRICH_BATCH): void {
 	if (running.has(seriesId) || !pendingEnrichment(seriesId)) return;
 	running.add(seriesId);
-	void enrichSeriesVolumes(seriesId)
+	void enrichSeriesVolumes(seriesId, budget)
 		.catch((error) => console.error(`[livres] enrichissement de la série ${seriesId} :`, error))
 		.finally(() => running.delete(seriesId));
 }
@@ -296,7 +367,7 @@ function syncInBackground(series: BookSeries): void {
 	syncing.add(series.id);
 	void ensureCatalogueLink(series)
 		.then((linked) => syncSeriesSkeleton(linked))
-		.then(() => enrichInBackground(series.id))
+		.then(() => enrichInBackground(series.id, ENRICH_FULL))
 		.catch((error) => console.error(`[livres] synchronisation de la série ${series.id} :`, error))
 		.finally(() => syncing.delete(series.id));
 }
@@ -316,7 +387,7 @@ export async function prepareSeries(series: BookSeries): Promise<BookSeries> {
 				.finally(() => syncing.delete(series.id));
 		} else syncInBackground(series);
 	}
-	enrichInBackground(series.id);
+	enrichInBackground(series.id, ENRICH_FULL);
 	return getSeries(series.id) ?? series;
 }
 
@@ -334,12 +405,24 @@ export function getSeries(seriesId: number): BookSeries | undefined {
 	return db.select().from(bookSeries).where(eq(bookSeries.id, seriesId)).get();
 }
 
-/** Force une remise à niveau complète, depuis le bouton de rafraîchissement. */
+/**
+ * Force une remise à niveau complète, depuis le bouton de rafraîchissement.
+ *
+ * Les tomes revenus les mains vides redeviennent à décrire : sans cela un tome
+ * qu'une réponse malheureuse avait laissé sans titre ni couverture le resterait
+ * définitivement, et le bouton n'aurait aucune prise sur lui. La description
+ * elle-même repart en arrière-plan — trente recherches font attendre trop
+ * longtemps, et la page annonce déjà ce qui reste à faire.
+ */
 export async function refreshSeries(seriesId: number): Promise<void> {
-	const series = db.select().from(bookSeries).where(eq(bookSeries.id, seriesId)).get();
+	const series = getSeries(seriesId);
 	if (!series) return;
 	await syncSeriesSkeleton(series);
-	await enrichSeriesVolumes(seriesId);
+	db.run(sql`
+		UPDATE book_series_volumes SET enriched_at = NULL
+		WHERE series_id = ${seriesId} AND (description IS NULL OR cover_url IS NULL)
+	`);
+	enrichInBackground(seriesId, ENRICH_FULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -499,4 +582,50 @@ export function seriesNavigation(
 		prev: neighbour(volumes[index - 1]),
 		next: neighbour(volumes[index + 1])
 	};
+}
+
+/**
+ * Fait entrer dans la bibliothèque tous les tomes de la série qui n'y sont pas
+ * encore.
+ *
+ * Rien n'est demandé au réseau : les tomes sont déjà décrits en base, et
+ * relancer cent recherches d'ISBN pour une série de cent tomes prendrait des
+ * minutes et le quota d'une journée. Un tome que Google n'a pas encore décrit
+ * entre avec ce que le catalogue en sait — son rang et son titre — et son
+ * bouton « ↻ » le complètera.
+ */
+export function collectWholeSeries(userId: number, series: BookSeries): number {
+	const missing = buildSeriesVolumes(userId, series).filter(
+		(volume) => volume.bookId === null && volume.volumeId !== null
+	);
+	const byId = new Map(getSeriesVolumes(series.id).map((row) => [row.id, row]));
+	let added = 0;
+	for (const view of missing) {
+		const row = byId.get(view.volumeId as number);
+		if (!row) continue;
+		const book = addOrUpdateBook(
+			{
+				isbn13: row.isbn13,
+				isbn10: null,
+				title: row.title,
+				subtitle: row.subtitle,
+				authors: JSON.parse(series.authors) as string[],
+				description: row.description,
+				publisher: row.publisher,
+				publishDate: row.publishDate,
+				language: 'fr',
+				pageCount: row.pageCount,
+				coverUrl: row.coverUrl,
+				seriesTitle: series.title,
+				seriesUri: series.externalId,
+				volume: row.ordinal === null ? null : String(row.ordinal),
+				source: 'inventaire',
+				sourceId: row.sourceUri
+			},
+			{ volume: row.ordinal === null ? null : String(row.ordinal) }
+		);
+		collectBook(userId, book);
+		added += 1;
+	}
+	return added;
 }

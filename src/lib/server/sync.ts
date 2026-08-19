@@ -86,8 +86,8 @@ export async function syncProviders(): Promise<{ ok: number; failed: number }> {
 	return { ok, failed };
 }
 
-/** Tomes décrits en une nuit, tous titres confondus : le quota Google Books est fini. */
-const NIGHTLY_VOLUME_BUDGET = 80;
+/** Recherches Google Books par nuit, tous titres confondus : le quota est fini. */
+const NIGHTLY_SEARCH_BUDGET = 60;
 
 /**
  * Complète les séries de livres de la bibliothèque : nouveaux tomes parus, et
@@ -105,7 +105,7 @@ export async function syncBookSeries(): Promise<{ volumes: number; series: numbe
 		GROUP BY s.id
 		ORDER BY pending DESC
 	`);
-	let budget = NIGHTLY_VOLUME_BUDGET;
+	let budget = NIGHTLY_SEARCH_BUDGET;
 	let volumes = 0;
 	let touched = 0;
 	for (const target of targets) {
@@ -114,8 +114,9 @@ export async function syncBookSeries(): Promise<{ volumes: number; series: numbe
 		if (!series) continue;
 		try {
 			await syncSeriesSkeleton(series);
-			const enriched = await enrichSeriesVolumes(series.id, Math.min(budget, 25));
-			budget -= Math.min(budget, 25);
+			const share = Math.min(budget, 20);
+			const enriched = await enrichSeriesVolumes(series.id, share);
+			budget -= share;
 			volumes += enriched;
 			touched += 1;
 		} catch (e) {

@@ -11,6 +11,7 @@
 
 	let adding = $state<string | null>(null);
 	let confirmAll = $state(false);
+	let confirmAddAll = $state(false);
 
 	const series = $derived(data.series);
 	const volumes = $derived(data.volumes);
@@ -102,6 +103,34 @@
 				onclick={() => (confirmAll = true)}
 			>
 				Tout marquer comme lu
+			</button>
+		{/if}
+	{/if}
+	{#if missing > 0}
+		<!-- Une collection déjà complète en rayon n'a pas à être saisie tome par
+			 tome : on ajoute d'un coup ce qui manque. -->
+		{#if confirmAddAll}
+			<form
+				method="POST"
+				action="?/addAll"
+				use:enhance={() => async ({ update }) => {
+					await update();
+					confirmAddAll = false;
+				}}
+				class="flex items-center gap-2"
+			>
+				<button class="rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
+					Confirmer : ajouter {missing} tome{missing > 1 ? 's' : ''}
+				</button>
+				<button type="button" class="text-sm text-mut" onclick={() => (confirmAddAll = false)}>Annuler</button>
+			</form>
+		{:else}
+			<button
+				type="button"
+				class="rounded-full border border-brand px-3.5 py-2 text-sm font-semibold text-brand hover:opacity-90"
+				onclick={() => (confirmAddAll = true)}
+			>
+				+ Ajouter toute la série
 			</button>
 		{/if}
 	{/if}
@@ -237,19 +266,3 @@
 		{/each}
 	</ul>
 {/if}
-
-<section class="mt-6 rounded-2xl bg-card p-4">
-	<h2 class="mb-2 text-sm font-semibold">Mon avis sur la série</h2>
-	<form method="POST" action="?/review" use:enhance class="flex flex-col gap-2">
-		<textarea
-			name="review"
-			rows="3"
-			placeholder="Ce que j'en ai pensé…"
-			class="w-full resize-y rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			>{data.userSeries.review ?? ''}</textarea
-		>
-		<button class="self-end rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
-			Enregistrer
-		</button>
-	</form>
-</section>

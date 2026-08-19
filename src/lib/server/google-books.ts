@@ -188,39 +188,57 @@ export async function googleVolumeByIsbn(rawIsbn: string): Promise<GoogleVolume 
 const CHAPTER = /\bchapitres?\b/i;
 
 /**
- * Le tome numéro `volume` de cette série, tel que Google Books le décrit.
+ * Tous les tomes de cette série que Google reconnaît dans une seule réponse,
+ * rangés par numéro.
+ *
+ * Une recherche « intitle:<série> tome N » ne ramène pas que le tome N : la
+ * même réponse contient une dizaine d'autres tomes de la série. Les récolter
+ * tous divise par autant le nombre d'appels — ce qui compte, l'API répondant
+ * 503 une fois sur deux et son quota journalier étant vite atteint.
  *
  * On interroge `intitle:` seul : combiné à `inauthor:`, ou avec une expression
  * entre guillemets, l'API répond 503 de façon reproductible. Le tri se fait
- * donc ici — on ne garde qu'un résultat qui porte bien le nom de la série et
- * le bon numéro de tome, et on préfère celui qui a un résumé.
+ * donc ici — un candidat doit désigner *cette* série et porter un numéro.
  */
+export async function googleVolumesOfSeries(
+	seriesTitle: string,
+	near: number
+): Promise<Map<number, GoogleVolume>> {
+	const found = new Map<number, GoogleVolume>();
+	if (!normalizeBookTitle(seriesTitle)) return found;
+	const items = await search(`intitle:${seriesTitle} tome ${near}`, 40);
+	for (const item of items) {
+		const candidate = toVolume(item);
+		if (CHAPTER.test(candidate.title)) continue;
+		// Le titre du candidat doit désigner *cette* série, pas une dérivée :
+		// « One Piece Doors » et « One Piece Party » commencent par « One
+		// Piece » sans en être des tomes.
+		const parsed = splitSeriesTitle(candidate.title);
+		if (parsed.volume === null || !sameSeries(parsed.seriesTitle, seriesTitle)) continue;
+		const kept = found.get(parsed.volume);
+		if (!kept || better(candidate, kept)) found.set(parsed.volume, candidate);
+	}
+	return found;
+}
+
+/**
+ * Entre deux éditions du même tome : l'édition française d'abord —
+ * `langRestrict` laisse passer des tirages japonais, dont l'ISBN mènerait
+ * ensuite à la mauvaise édition. Puis une notice décrite plutôt que nue,
+ * illustrée plutôt qu'aveugle.
+ */
+function better(candidate: GoogleVolume, kept: GoogleVolume): boolean {
+	const score = (volume: GoogleVolume) =>
+		Number(volume.language === 'fr') * 4 +
+		Number(Boolean(volume.description)) * 2 +
+		Number(Boolean(volume.coverUrl));
+	return score(candidate) > score(kept);
+}
+
+/** Le tome numéro `volume` de cette série, tel que Google Books le décrit. */
 export async function googleVolumeOfSeries(
 	seriesTitle: string,
 	volume: number
 ): Promise<GoogleVolume | null> {
-	const series = normalizeBookTitle(seriesTitle);
-	if (!series) return null;
-	const items = await search(`intitle:${seriesTitle} tome ${volume}`, 20);
-	const candidates = items
-		.map(toVolume)
-		.filter((candidate) => {
-			if (CHAPTER.test(candidate.title)) return false;
-			// Le titre du candidat doit designer *cette* serie, pas une derivee :
-			// « One Piece Doors » et « One Piece Party » commencent par « One
-			// Piece » sans en etre des tomes.
-			const found = splitSeriesTitle(candidate.title);
-			return found.volume === volume && sameSeries(found.seriesTitle, seriesTitle);
-		})
-		// L'édition française d'abord — `langRestrict` laisse passer des tirages
-		// japonais, dont l'ISBN mènerait ensuite à la mauvaise édition. Puis une
-		// notice décrite plutôt que nue, illustrée plutôt qu'aveugle.
-		.sort(
-			(a, b) =>
-				Number(b.language === 'fr') - Number(a.language === 'fr') ||
-				Number(Boolean(b.description)) - Number(Boolean(a.description)) ||
-				Number(Boolean(b.coverUrl)) - Number(Boolean(a.coverUrl)) ||
-				(a.publishDate ?? '').localeCompare(b.publishDate ?? '')
-		);
-	return candidates[0] ?? null;
+	return (await googleVolumesOfSeries(seriesTitle, volume)).get(volume) ?? null;
 }

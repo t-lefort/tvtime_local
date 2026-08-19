@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import {
 	buildSeriesVolumes,
+	collectWholeSeries,
 	getSeriesVolumes,
 	ownedOrdinal,
 	pendingEnrichment,
@@ -75,6 +76,15 @@ export const actions: Actions = {
 		return { ok: 'Tome ajouté à votre bibliothèque.' };
 	},
 
+	/** Toute la série d'un coup, pour une collection déjà complète en rayon. */
+	addAll: async ({ params, locals }) => {
+		const user = requireUser(locals);
+		const series = await requireSeries(params.key);
+		const added = collectWholeSeries(user.id, series);
+		if (!added) return fail(400, { error: 'Tous les tomes connus sont déjà dans votre bibliothèque.' });
+		return { ok: `${added} tome${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''} à votre bibliothèque.` };
+	},
+
 	// Même geste que cocher un épisode : un clic bascule l'état de lecture.
 	toggleRead: async ({ request, locals }) => {
 		const user = requireUser(locals);
@@ -114,14 +124,6 @@ export const actions: Actions = {
 		updateUserSeries(user.id, series.id, {
 			rating: Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null
 		});
-	},
-
-	review: async ({ params, request, locals }) => {
-		const user = requireUser(locals);
-		const series = await requireSeries(params.key);
-		const review = String((await request.formData()).get('review') ?? '').trim();
-		updateUserSeries(user.id, series.id, { review: review || null });
-		return { ok: review ? 'Avis enregistré.' : 'Avis supprimé.' };
 	},
 
 	refresh: async ({ params, locals }) => {

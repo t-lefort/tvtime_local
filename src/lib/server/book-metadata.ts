@@ -544,8 +544,16 @@ export async function getBookSeriesVolumes(uri: string): Promise<BookSeriesVolum
 			if (existing && (existing.french || !french)) continue;
 			byOrdinal.set(key, { uri: part.uri, title, volume, date: part.date ?? null, french });
 		}
-		return [...byOrdinal.values()]
+		const all = [...byOrdinal.values()]
 			.map(({ french: _french, ...volume }) => volume)
 			.sort(compareVolumes);
+		// Les catalogues rangent sous une serie ses artbooks, ses guides, ses
+		// editions etrangeres et des doublons que personne n'a numerotes
+		// (« One piece blue grand data file », « Wan Pisu », « L'aventure
+		// d'Oz »). Un tome de base, lui, porte toujours son rang : des qu'il en
+		// existe, on s'en tient a eux. Une serie que le catalogue ne numerote
+		// nulle part garde tout, faute de mieux.
+		const numbered = all.filter((volume) => volume.volume !== null);
+		return numbered.length ? numbered : all;
 	});
 }

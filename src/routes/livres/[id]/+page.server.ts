@@ -60,13 +60,6 @@ export const actions: Actions = {
 			rating: Number.isInteger(raw) && raw >= 1 && raw <= 10 ? raw : null
 		});
 	},
-	review: async ({ params, request, locals }) => {
-		const user = requireUser(locals);
-		const book = requireBook(user.id, params.id);
-		const review = String((await request.formData()).get('review') ?? '').trim();
-		updateUserBook(user.id, book.id, { review: review || null });
-		return { ok: review ? 'Avis enregistré.' : 'Avis supprimé.' };
-	},
 	edit: async ({ params, request, locals }) => {
 		const user = requireUser(locals);
 		const book = requireBook(user.id, params.id);

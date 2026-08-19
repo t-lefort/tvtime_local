@@ -191,22 +191,6 @@
 	<p class="mt-4 text-sm leading-relaxed text-mut">{book.description}</p>
 {/if}
 
-<section class="mt-6 rounded-2xl bg-card p-4">
-	<h2 class="mb-2 text-sm font-semibold">Mon avis</h2>
-	<form method="POST" action="?/review" use:enhance class="flex flex-col gap-2">
-		<textarea
-			name="review"
-			rows="3"
-			placeholder="Ce que j'en ai pensé…"
-			class="w-full resize-y rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink placeholder:text-mut focus:border-brand focus:outline-none"
-			>{book.review ?? ''}</textarea
-		>
-		<button class="self-end rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90">
-			Enregistrer
-		</button>
-	</form>
-</section>
-
 {#if form?.error}<p class="mt-3 text-sm text-red-400">{form.error}</p>{/if}
 {#if form?.ok}<p class="mt-3 text-sm text-ok">{form.ok}</p>{/if}
 
