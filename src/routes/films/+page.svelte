@@ -3,7 +3,7 @@
 	import LibrarySearch from '$lib/components/LibrarySearch.svelte';
 	import Poster from '$lib/components/Poster.svelte';
 	import SortToggle from '$lib/components/SortToggle.svelte';
-	import { yearOf } from '$lib/format';
+	import { formatDateShort, yearOf } from '$lib/format';
 	import { matchesQuery, parseQuery } from '$lib/library';
 	import { updateListParams } from '$lib/library-nav';
 	import { DEFAULT_SORT, type SortOrder } from '$lib/sort';
@@ -12,9 +12,18 @@
 
 	type Movie = (typeof data.movies)[number];
 
-	const chips = [
+	/**
+	 * Un film annoncé mais pas encore sorti n'est pas « à voir » ce soir : il a
+	 * sa propre catégorie pour ne pas noyer la liste de ce qui est regardable.
+	 * Sans date connue, on ne présume rien : le film reste à voir.
+	 */
+	const upcoming = (m: Movie) =>
+		m.watchCount === 0 && !!m.releaseDate && m.releaseDate > data.today;
+
+	const allChips = [
 		{ key: 'tous', label: 'Tous', match: () => true },
-		{ key: 'avoir', label: 'À voir', match: (m: Movie) => m.watchCount === 0 },
+		{ key: 'avoir', label: 'À voir', match: (m: Movie) => m.watchCount === 0 && !upcoming(m) },
+		{ key: 'avenir', label: 'À venir', match: upcoming },
 		{ key: 'vus', label: 'Vus', match: (m: Movie) => m.watchCount > 0 },
 		{ key: 'favoris', label: 'Favoris', match: (m: Movie) => m.favorite }
 	];
@@ -30,6 +39,14 @@
 	$effect(() => void (q = data.q));
 	$effect(() => void (filter = data.filter));
 	$effect(() => void (sort = data.sort));
+
+	// La puce « À venir » ne s'affiche que si la collection attend une sortie :
+	// autrement elle n'ajouterait qu'une catégorie toujours vide.
+	const chips = $derived(
+		allChips.filter(
+			(chip) => chip.key !== 'avenir' || filter === 'avenir' || data.movies.some(upcoming)
+		)
+	);
 
 	const sorted = $derived(
 		[...data.movies].sort((a, b) =>
@@ -51,8 +68,19 @@
 
 	const movies = $derived(matching.filter(chips.find((chip) => chip.key === filter)?.match ?? (() => true)));
 
-	const aVoir = $derived(movies.filter((m) => m.watchCount === 0));
+	const aVoir = $derived(movies.filter((m) => m.watchCount === 0 && !upcoming(m)));
 	const vus = $derived(movies.filter((m) => m.watchCount > 0));
+	const aVenir = $derived.by(() => {
+		const list = movies.filter(upcoming);
+		// Un calendrier se lit dans l'ordre : la sortie la plus proche en tête,
+		// sauf si l'ordre alphabétique a été demandé.
+		return sort === 'alpha' ? list : list.sort((a, b) => a.releaseDate!.localeCompare(b.releaseDate!));
+	});
+
+	/** Année pour un film sorti, date complète pour une sortie encore à venir. */
+	function dateLabel(movie: Movie) {
+		return upcoming(movie) ? formatDateShort(movie.releaseDate) : yearOf(movie.releaseDate);
+	}
 
 	/** Conserve l'ordre et la recherche courants en changeant de filtre. */
 	function filterHref(key: string) {
@@ -133,10 +161,17 @@
 									<path d="M4 12.5l5 5L20 6.5" />
 								</svg>
 							</span>
+						{:else if upcoming(movie)}
+							<span
+								class="absolute bottom-1.5 left-1.5 rounded-full bg-bg/70 px-1.5 py-0.5 text-xs"
+								title="Pas encore sorti"
+							>
+								📅
+							</span>
 						{/if}
 					</div>
 					<p class="mt-1.5 truncate text-sm font-medium group-hover:text-brand">{movie.title}</p>
-					<p class="text-xs text-mut">{yearOf(movie.releaseDate)}</p>
+					<p class="text-xs text-mut">{dateLabel(movie)}</p>
 				</a>
 			{/each}
 		</div>
@@ -146,6 +181,12 @@
 		<section class="mb-8">
 			<h2 class="mb-3 text-lg font-semibold">À voir <span class="text-mut">· {aVoir.length}</span></h2>
 			{@render grid(aVoir)}
+		</section>
+	{/if}
+	{#if aVenir.length > 0}
+		<section class="mb-8">
+			<h2 class="mb-3 text-lg font-semibold">À venir <span class="text-mut">· {aVenir.length}</span></h2>
+			{@render grid(aVenir)}
 		</section>
 	{/if}
 	{#if vus.length > 0}
