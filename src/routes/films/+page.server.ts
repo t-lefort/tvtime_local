@@ -1,5 +1,6 @@
 import { parseQuery } from '$lib/library';
 import { parseSort } from '$lib/sort';
+import { appToday } from '$lib/server/dates';
 import { getLibraryCounts } from '$lib/server/library';
 import { getMoviesWithWatch } from '$lib/server/queries';
 import { requireUser } from '$lib/server/users';
@@ -27,6 +28,9 @@ export const load: PageServerLoad = ({ url, locals }) => {
 		filter: url.searchParams.get('filtre') ?? 'tous',
 		sort: parseSort(url.searchParams.get('tri')),
 		q: parseQuery(url.searchParams.get('q')).q,
+		// Le jour de référence vient du serveur : c'est lui qui dit, dans le fuseau
+		// de l'instance, quels films ne sont pas encore sortis.
+		today: appToday(),
 		libraryCounts: getLibraryCounts(user.id)
 	};
 };
