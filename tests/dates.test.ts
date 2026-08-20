@@ -47,3 +47,24 @@ test('une diffusion américaine en soirée devient disponible le lendemain en Fr
 
 	assert.equal(localizedEpisodeAirDate(dates, 3, '2026-07-12'), '2026-07-13');
 });
+
+test("la date TVmaze prévaut quand TMDB annonce l'épisode la veille", () => {
+	const dates = buildEpisodeAirDates(
+		[
+			{ season: 2, number: 8, airdate: '2025-01-10', airstamp: '2025-01-10T12:00:00Z' },
+			{ season: 3, number: 8, airdate: '2026-08-21', airstamp: '2026-08-21T12:00:00Z' }
+		],
+		'Europe/Paris'
+	);
+
+	assert.equal(localizedEpisodeAirDate(dates, 8, '2026-08-20'), '2026-08-21');
+});
+
+test("une date éloignée ne rattache pas un épisode d'une autre saison", () => {
+	const dates = buildEpisodeAirDates(
+		[{ season: 2, number: 8, airdate: '2025-01-10', airstamp: '2025-01-10T12:00:00Z' }],
+		'Europe/Paris'
+	);
+
+	assert.equal(localizedEpisodeAirDate(dates, 8, '2026-08-20'), undefined);
+});

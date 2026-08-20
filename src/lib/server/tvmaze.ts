@@ -93,5 +93,26 @@ export function localizedEpisodeAirDate(
 	episode: number,
 	airDate: string | null
 ): string | undefined {
-	return airDate ? dates.get(episodeKey(episode, airDate)) : undefined;
+	if (!airDate) return undefined;
+
+	const exact = dates.get(episodeKey(episode, airDate));
+	if (exact) return exact;
+
+	// TMDB date parfois les épisodes de plateformes au jour de sortie américain,
+	// tandis que TVmaze retient le lendemain (jour officiel de la plateforme).
+	// Le numéro seul n'est pas assez discriminant entre plusieurs saisons : on
+	// n'accepte donc ce repli que si les deux dates civiles diffèrent d'un seul jour.
+	const target = Date.parse(`${airDate}T00:00:00Z`);
+	if (Number.isNaN(target)) return undefined;
+
+	let match: string | undefined;
+	for (const [key, localizedDate] of dates) {
+		const separator = key.indexOf(':');
+		if (separator < 0 || Number(key.slice(0, separator)) !== episode) continue;
+		const sourceDate = Date.parse(`${key.slice(separator + 1)}T00:00:00Z`);
+		if (Number.isNaN(sourceDate) || Math.abs(sourceDate - target) !== 86_400_000) continue;
+		if (match && match !== localizedDate) return undefined;
+		match = localizedDate;
+	}
+	return match;
 }
