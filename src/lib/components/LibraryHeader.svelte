@@ -12,12 +12,25 @@
 
 <div class="mb-3 flex items-center justify-between gap-3">
 	<h1 class="text-2xl font-bold">Bibliothèque</h1>
-	<a
-		href={section.addHref}
-		class="shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90"
-	>
-		+ Ajouter
-	</a>
+	<div class="flex shrink-0 items-center gap-2">
+		<a
+			href="/bibliotheque/partage?type={current}"
+			class="flex items-center gap-1.5 rounded-full bg-card px-3 py-2 text-sm font-semibold text-ink hover:bg-card-hover"
+			aria-label="Partager"
+			title="Partager"
+		>
+			<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+			</svg>
+			<span class="max-sm:hidden">Partager</span>
+		</a>
+		<a
+			href={section.addHref}
+			class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:opacity-90"
+		>
+			+ Ajouter
+		</a>
+	</div>
 </div>
 
 <!-- Grille de trois colonnes égales plutôt qu'une rangée qui défile : les trois
