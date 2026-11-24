@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { enhance } from '$app/forms';
 	import BackButton from '$lib/components/BackButton.svelte';
 	import CastList from '$lib/components/CastList.svelte';
@@ -25,6 +27,15 @@
 	};
 
 	const remaining = $derived(show.airedCount - show.watchedCount);
+
+	// Saisons dépliées : initialisées à l'arrivée sur la série (ou à son ajout), puis
+	// pilotées par l'utilisateur. Elles ne suivent pas `data.openSeason` après chaque
+	// action, sinon valider un épisode replie la saison en cours (#88).
+	const seasonsKey = $derived(`${show.tmdbId}:${data.inLibrary}`);
+	const openSeasons = $derived.by(() => {
+		void seasonsKey;
+		return new SvelteSet(untrack(() => (data.openSeason == null ? [] : [data.openSeason])));
+	});
 </script>
 
 <svelte:head>
@@ -192,7 +203,12 @@
 {#if data.inLibrary}
 	<div class="mt-6 space-y-3">
 		{#each data.seasons as season (season.number)}
-			<details class="group overflow-hidden rounded-xl bg-card" open={season.number === data.openSeason}>
+			<details
+				class="group overflow-hidden rounded-xl bg-card"
+				open={openSeasons.has(season.number)}
+				ontoggle={(e) =>
+					e.currentTarget.open ? openSeasons.add(season.number) : openSeasons.delete(season.number)}
+			>
 				<summary class="flex cursor-pointer list-none items-center gap-3 p-3.5 select-none [&::-webkit-details-marker]:hidden">
 					<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 text-mut transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M9 6l6 6-6 6" />
